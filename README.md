@@ -14,8 +14,9 @@
 6. [Prerequisites](#prerequisites)
 7. [Environment Variables (.env Setup)](#environment-variables)
 8. [How to Run — Step by Step](#how-to-run)
-9. [API Reference](#api-reference)
-10. [Mobile App Configuration](#mobile-app-configuration)
+9. [commands to run]
+10. [API Reference](#api-reference)
+11. [Mobile App Configuration](#mobile-app-configuration)
 
 ---
 
@@ -424,7 +425,11 @@ node seed-projects.js  # Additional project data
 ```
 
 ---
-
+## commands to write 
+- & "B:\integerated grad\start_servers.bat"  
+- cd "B:\integerated grad\FinalGRAD-mobile\FinalGRAD-mobile"
+  flutter run  
+            
 ## API Reference
 
 ### Node.js API — `http://localhost:3000/api`
