@@ -1,0 +1,45 @@
+# Dependencies
+**/node_modules/
+
+# Python virtual environment
+ai/ai-gateway/venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Build output
+web/frontend/dist/
+web/frontend/build/
+mobile/build/
+
+# Flutter
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+
+# Environment / secrets
+.env
+**/.env
+!**/.env.example
+
+# Logs
+ai/ai-gateway/logs/
+**/logs/*.log
+
+# Vector store / database
+ai/ai-gateway/chroma_db/
+
+# Uploaded files
+web/backend/uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+web/frontend/playwright-report/
+web/frontend/test-results/

@@ -1,0 +1,742 @@
+{
+  "users": [
+    {
+      "id": "user_001",
+      "name": "Ahmed Mohamed Hassan",
+      "email": "ahmed.hassan@email.com",
+      "phone": "01234567890",
+      "nationalId": "29012345678901",
+      "role": "citizen",
+      "isVerified": true,
+      "createdAt": "2024-01-15T08:30:00Z",
+      "profile": {
+        "address": "123 El-Tahrir Street, Cairo, Egypt",
+        "occupation": "Software Engineer",
+        "familySize": 4,
+        "monthlyIncome": 25000
+      }
+    },
+    {
+      "id": "user_002",
+      "name": "Fatma Ali Khalil",
+      "email": "fatma.khalil@email.com",
+      "phone": "01123456789",
+      "nationalId": "29512345678902",
+      "role": "citizen",
+      "isVerified": true,
+      "createdAt": "2024-02-10T10:15:00Z",
+      "profile": {
+        "address": "45 Gamea Street, Alexandria, Egypt",
+        "occupation": "Teacher",
+        "familySize": 3,
+        "monthlyIncome": 12000
+      }
+    },
+    {
+      "id": "user_003",
+      "name": "Omar Abdel Rahman",
+      "email": "omar.abdel@email.com",
+      "phone": "01098765432",
+      "nationalId": "29812345678903",
+      "role": "citizen",
+      "isVerified": true,
+      "createdAt": "2024-01-20T14:20:00Z",
+      "profile": {
+        "address": "78 El-Mansoura Street, Giza, Egypt",
+        "occupation": "Accountant",
+        "familySize": 5,
+        "monthlyIncome": 18000
+      }
+    },
+    {
+      "id": "user_004",
+      "name": "Mona Mahmoud Ali",
+      "email": "mona.mahmoud@email.com",
+      "phone": "01287654321",
+      "nationalId": "29212345678904",
+      "role": "citizen",
+      "isVerified": true,
+      "createdAt": "2024-03-05T09:45:00Z",
+      "profile": {
+        "address": "56 El-Nasr Street, New Capital, Egypt",
+        "occupation": "Doctor",
+        "familySize": 2,
+        "monthlyIncome": 35000
+      }
+    },
+    {
+      "id": "user_005",
+      "name": "System Administrator",
+      "email": "admin@housing.gov.eg",
+      "phone": "01000000000",
+      "nationalId": "29000000000000",
+      "role": "admin",
+      "isVerified": true,
+      "createdAt": "2024-01-01T00:00:00Z",
+      "profile": {
+        "address": "Ministry of Housing, Cairo, Egypt",
+        "occupation": "System Administrator",
+        "familySize": 1,
+        "monthlyIncome": 0
+      }
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj_001",
+      "name": "Cairo Garden Residences",
+      "location": {
+        "city": "Cairo",
+        "district": "New Cairo",
+        "address": "90th Street, Fifth Settlement"
+      },
+      "type": "residential",
+      "category": "apartments",
+      "status": "active",
+      "development": {
+        "totalUnits": 450,
+        "availableUnits": 120,
+        "soldUnits": 330,
+        "phases": 3
+      },
+      "pricing": {
+        "priceRange": "2.5M - 4.5M EGP",
+        "unitTypes": [
+          "2BR",
+          "3BR",
+          "4BR"
+        ],
+        "downPayment": "10%",
+        "installmentYears": 8
+      },
+      "timeline": {
+        "completionDate": "2024-12-31",
+        "deliveryDate": "2025-03-31",
+        "constructionProgress": 85
+      },
+      "features": {
+        "amenities": [
+          "Swimming Pool",
+          "Gym",
+          "Security",
+          "Parking",
+          "Kids Area"
+        ],
+        "areaRange": "120 - 240 sqm",
+        "floors": 12
+      },
+      "description": "Modern residential complex in New Cairo with premium amenities and strategic location"
+    },
+    {
+      "id": "proj_002",
+      "name": "Alexandria Coastal Towers",
+      "location": {
+        "city": "Alexandria",
+        "district": "Sidi Gaber",
+        "address": "Corniche Road, Mediterranean Coast"
+      },
+      "type": "residential",
+      "category": "luxury_apartments",
+      "status": "active",
+      "development": {
+        "totalUnits": 280,
+        "availableUnits": 45,
+        "soldUnits": 235,
+        "phases": 2
+      },
+      "pricing": {
+        "priceRange": "3.8M - 7.2M EGP",
+        "unitTypes": [
+          "3BR",
+          "4BR",
+          "Penthouse"
+        ],
+        "downPayment": "15%",
+        "installmentYears": 10
+      },
+      "timeline": {
+        "completionDate": "2025-06-30",
+        "deliveryDate": "2025-09-30",
+        "constructionProgress": 60
+      },
+      "features": {
+        "amenities": [
+          "Sea View",
+          "Private Beach",
+          "Spa",
+          "Concierge",
+          "Underground Parking"
+        ],
+        "areaRange": "180 - 350 sqm",
+        "floors": 25
+      },
+      "description": "Luxury coastal towers with Mediterranean sea views and premium beach access"
+    },
+    {
+      "id": "proj_003",
+      "name": "New Capital City Complex",
+      "location": {
+        "city": "New Capital",
+        "district": "Downtown",
+        "address": "Central Business District"
+      },
+      "type": "mixed_use",
+      "category": "residential_commercial",
+      "status": "planning",
+      "development": {
+        "totalUnits": 1200,
+        "availableUnits": 1200,
+        "soldUnits": 0,
+        "phases": 4
+      },
+      "pricing": {
+        "priceRange": "1.8M - 5.5M EGP",
+        "unitTypes": [
+          "Studio",
+          "1BR",
+          "2BR",
+          "3BR",
+          "Office"
+        ],
+        "downPayment": "5%",
+        "installmentYears": 12
+      },
+      "timeline": {
+        "completionDate": "2026-12-31",
+        "deliveryDate": "2027-03-31",
+        "constructionProgress": 15
+      },
+      "features": {
+        "amenities": [
+          "Smart City",
+          "Metro Access",
+          "Central Park",
+          "Shopping Mall",
+          "Business Center"
+        ],
+        "areaRange": "65 - 300 sqm",
+        "floors": 35
+      },
+      "description": "Mixed-use development in Egypt's new administrative capital with smart city features"
+    },
+    {
+      "id": "proj_004",
+      "name": "Mansoura Gardens",
+      "location": {
+        "city": "Mansoura",
+        "district": "El-Gomhoria",
+        "address": "Gamal Abdel Nasser Street"
+      },
+      "type": "residential",
+      "category": "villas_townhouses",
+      "status": "active",
+      "development": {
+        "totalUnits": 180,
+        "availableUnits": 35,
+        "soldUnits": 145,
+        "phases": 2
+      },
+      "pricing": {
+        "priceRange": "2.2M - 3.8M EGP",
+        "unitTypes": [
+          "Townhouse",
+          "Twin House",
+          "Villa"
+        ],
+        "downPayment": "20%",
+        "installmentYears": 7
+      },
+      "timeline": {
+        "completionDate": "2024-09-30",
+        "deliveryDate": "2024-11-30",
+        "constructionProgress": 95
+      },
+      "features": {
+        "amenities": [
+          "Private Garden",
+          "Community Center",
+          "Sports Club",
+          "24/7 Security"
+        ],
+        "areaRange": "200 - 400 sqm",
+        "floors": 3
+      },
+      "description": "Family-oriented residential community with private gardens and community facilities"
+    },
+    {
+      "id": "proj_005",
+      "name": "Suez Canal City Residences",
+      "location": {
+        "city": "Ismailia",
+        "district": "Suez Canal Zone",
+        "address": "Suez Canal Road"
+      },
+      "type": "residential",
+      "category": "affordable_housing",
+      "status": "active",
+      "development": {
+        "totalUnits": 600,
+        "availableUnits": 280,
+        "soldUnits": 320,
+        "phases": 3
+      },
+      "pricing": {
+        "priceRange": "850K - 1.5M EGP",
+        "unitTypes": [
+          "1BR",
+          "2BR",
+          "3BR"
+        ],
+        "downPayment": "25%",
+        "installmentYears": 15
+      },
+      "timeline": {
+        "completionDate": "2025-08-31",
+        "deliveryDate": "2025-10-31",
+        "constructionProgress": 40
+      },
+      "features": {
+        "amenities": [
+          "Public Transport",
+          "Schools",
+          "Healthcare",
+          "Shopping Center"
+        ],
+        "areaRange": "75 - 150 sqm",
+        "floors": 8
+      },
+      "description": "Affordable housing project near Suez Canal with government subsidies and easy payment plans"
+    }
+  ],
+  "applications": [
+    {
+      "id": "app_001",
+      "userId": "user_001",
+      "projectId": "proj_001",
+      "status": "approved",
+      "priority": "normal",
+      "submittedAt": "2024-01-20T09:15:00Z",
+      "reviewedAt": "2024-01-22T14:30:00Z",
+      "reviewedBy": "user_005",
+      "applicationData": {
+        "requestedUnitType": "3BR",
+        "preferredFloor": "5-8",
+        "paymentMethod": "installments",
+        "specialRequirements": "Ground floor access for elderly parents"
+      },
+      "documents": {
+        "nationalIdCopy": "uploaded",
+        "incomeCertificate": "uploaded",
+        "birthCertificate": "uploaded",
+        "marriageCertificate": "uploaded",
+        "bankStatements": "uploaded"
+      },
+      "reviewNotes": "Applicant meets all criteria. Income sufficient for requested unit type.",
+      "rejectionReason": null
+    },
+    {
+      "id": "app_002",
+      "userId": "user_002",
+      "projectId": "proj_002",
+      "status": "pending",
+      "priority": "high",
+      "submittedAt": "2024-02-15T11:20:00Z",
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "applicationData": {
+        "requestedUnitType": "4BR",
+        "preferredFloor": "15-20",
+        "paymentMethod": "cash",
+        "specialRequirements": "Sea view preferred"
+      },
+      "documents": {
+        "nationalIdCopy": "uploaded",
+        "incomeCertificate": "uploaded",
+        "birthCertificate": "uploaded",
+        "bankStatements": "pending"
+      },
+      "reviewNotes": null,
+      "rejectionReason": null
+    },
+    {
+      "id": "app_003",
+      "userId": "user_003",
+      "projectId": "proj_004",
+      "status": "rejected",
+      "priority": "normal",
+      "submittedAt": "2024-01-25T16:45:00Z",
+      "reviewedAt": "2024-01-28T10:00:00Z",
+      "reviewedBy": "user_005",
+      "applicationData": {
+        "requestedUnitType": "Villa",
+        "preferredFloor": "Ground Floor",
+        "paymentMethod": "installments",
+        "specialRequirements": "Large garden for children"
+      },
+      "documents": {
+        "nationalIdCopy": "uploaded",
+        "incomeCertificate": "uploaded",
+        "birthCertificate": "uploaded",
+        "marriageCertificate": "uploaded"
+      },
+      "reviewNotes": "Income below minimum requirement for villa category.",
+      "rejectionReason": "Monthly income of 18,000 EGP is below 25,000 EGP minimum for villa units"
+    },
+    {
+      "id": "app_004",
+      "userId": "user_004",
+      "projectId": "proj_003",
+      "status": "pending",
+      "priority": "normal",
+      "submittedAt": "2024-03-10T13:30:00Z",
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "applicationData": {
+        "requestedUnitType": "2BR",
+        "preferredFloor": "Any",
+        "paymentMethod": "installments",
+        "specialRequirements": "Metro access preferred"
+      },
+      "documents": {
+        "nationalIdCopy": "uploaded",
+        "incomeCertificate": "uploaded",
+        "birthCertificate": "uploaded",
+        "professionalLicense": "uploaded"
+      },
+      "reviewNotes": null,
+      "rejectionReason": null
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "audit_001",
+      "userId": "user_005",
+      "userName": "System Administrator",
+      "action": "APPLICATION_APPROVED",
+      "targetId": "app_001",
+      "targetType": "application",
+      "timestamp": "2024-01-22T14:30:00Z",
+      "ipAddress": "192.168.1.100",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "details": "Approved housing application for Ahmed Mohamed Hassan - Cairo Garden Residences",
+      "previousStatus": "pending",
+      "newStatus": "approved"
+    },
+    {
+      "id": "audit_002",
+      "userId": "user_005",
+      "userName": "System Administrator",
+      "action": "APPLICATION_REJECTED",
+      "targetId": "app_003",
+      "targetType": "application",
+      "timestamp": "2024-01-28T10:00:00Z",
+      "ipAddress": "192.168.1.100",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "details": "Rejected housing application for Omar Abdel Rahman - Mansoura Gardens",
+      "previousStatus": "pending",
+      "newStatus": "rejected",
+      "rejectionReason": "Monthly income below minimum requirement for villa category"
+    },
+    {
+      "id": "audit_003",
+      "userId": "user_005",
+      "userName": "System Administrator",
+      "action": "LOGIN",
+      "targetId": null,
+      "targetType": "system",
+      "timestamp": "2024-02-05T08:00:00Z",
+      "ipAddress": "192.168.1.100",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "details": "System administrator logged into the housing management system"
+    },
+    {
+      "id": "audit_005",
+      "userId": "user_005",
+      "userName": "System Administrator",
+      "action": "PROJECT_CREATED",
+      "targetId": "proj_005",
+      "targetType": "project",
+      "timestamp": "2024-02-01T09:00:00Z",
+      "ipAddress": "192.168.1.100",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "details": "Created new affordable housing project: Suez Canal City Residences"
+    },
+    {
+      "id": "audit_006",
+      "userId": "user_005",
+      "userName": "System Administrator",
+      "action": "USER_VERIFIED",
+      "targetId": "user_004",
+      "targetType": "user",
+      "timestamp": "2024-03-05T10:00:00Z",
+      "ipAddress": "192.168.1.100",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "details": "Verified user account for Mona Mahmoud Ali - Doctor"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif_001",
+      "type": "new_application",
+      "title": "New Housing Application Received",
+      "message": "Fatma Ali Khalil has submitted a new application for Alexandria Coastal Towers - 4BR Sea View Unit",
+      "priority": "high",
+      "category": "applications",
+      "targetUserId": "user_005",
+      "isRead": false,
+      "actionRequired": true,
+      "relatedEntityId": "app_002",
+      "relatedEntityType": "application",
+      "createdAt": "2024-02-15T11:20:00Z",
+      "expiresAt": "2024-02-22T11:20:00Z"
+    },
+    {
+      "id": "notif_002",
+      "type": "system_alert",
+      "title": "Project Update Required",
+      "message": "Cairo Garden Residences construction progress needs to be updated. Current progress: 85%",
+      "priority": "medium",
+      "category": "projects",
+      "targetUserId": "user_005",
+      "isRead": true,
+      "actionRequired": true,
+      "relatedEntityId": "proj_001",
+      "relatedEntityType": "project",
+      "createdAt": "2024-02-10T09:00:00Z",
+      "expiresAt": "2024-02-17T09:00:00Z"
+    },
+    {
+      "id": "notif_003",
+      "type": "deadline_reminder",
+      "title": "Application Review Deadline",
+      "message": "3 applications are pending review and approaching the 7-day deadline",
+      "priority": "high",
+      "category": "deadlines",
+      "targetUserId": "user_005",
+      "isRead": false,
+      "actionRequired": true,
+      "relatedEntityId": null,
+      "relatedEntityType": null,
+      "createdAt": "2024-03-15T10:30:00Z",
+      "expiresAt": "2024-03-22T10:30:00Z"
+    },
+    {
+      "id": "notif_004",
+      "type": "document_upload",
+      "title": "Missing Documents",
+      "message": "Fatma Ali Khalil has uploaded bank statements for application app_002",
+      "priority": "low",
+      "category": "documents",
+      "targetUserId": "user_005",
+      "isRead": true,
+      "actionRequired": false,
+      "relatedEntityId": "app_002",
+      "relatedEntityType": "application",
+      "createdAt": "2024-02-16T14:00:00Z",
+      "expiresAt": "2024-02-23T14:00:00Z"
+    },
+    {
+      "id": "notif_005",
+      "type": "monthly_report",
+      "title": "Monthly Performance Report Available",
+      "message": "February 2024 housing applications report is now ready for review",
+      "priority": "low",
+      "category": "reports",
+      "targetUserId": "user_005",
+      "isRead": false,
+      "actionRequired": false,
+      "relatedEntityId": null,
+      "relatedEntityType": null,
+      "createdAt": "2024-03-01T08:00:00Z",
+      "expiresAt": "2024-03-31T08:00:00Z"
+    },
+    {
+      "id": "notif_006",
+      "type": "high_priority_application",
+      "title": "High Priority Application",
+      "message": "Omar Abdel Rahman has submitted a high priority application for Alexandria Coastal Towers",
+      "priority": "high",
+      "category": "applications",
+      "targetUserId": "user_005",
+      "isRead": false,
+      "actionRequired": true,
+      "relatedEntityId": "app_007",
+      "relatedEntityType": "application",
+      "createdAt": "2024-03-15T10:30:00Z",
+      "expiresAt": "2024-03-22T10:30:00Z"
+    },
+    {
+      "id": "notif_007",
+      "type": "system_maintenance",
+      "title": "Scheduled System Maintenance",
+      "message": "System will be under maintenance on March 30, 2024 from 2:00 AM to 4:00 AM",
+      "priority": "medium",
+      "category": "system",
+      "targetUserId": "user_005",
+      "isRead": true,
+      "actionRequired": false,
+      "relatedEntityId": null,
+      "relatedEntityType": null,
+      "createdAt": "2024-03-25T12:00:00Z",
+      "expiresAt": "2024-03-30T02:00:00Z"
+    },
+    {
+      "id": "notif_008",
+      "type": "approval_notification",
+      "title": "Application Approved",
+      "message": "Mona Mahmoud Ali's application for Mansoura Gardens has been approved",
+      "priority": "low",
+      "category": "applications",
+      "targetUserId": "user_005",
+      "isRead": true,
+      "actionRequired": false,
+      "relatedEntityId": "app_008",
+      "relatedEntityType": "application",
+      "createdAt": "2024-03-22T09:30:00Z",
+      "expiresAt": "2024-03-29T09:30:00Z"
+    }
+  ],
+  "systemSettings": {
+    "applicationLimits": {
+      "maxApplicationsPerUser": 3,
+      "minIncomeRequirement": 8000,
+      "maxIncomeForSubsidy": 25000,
+      "applicationReviewPeriod": 7,
+      "documentUploadLimit": 10
+    },
+    "notificationSettings": {
+      "emailNotifications": true,
+      "smsAlerts": false,
+      "pushNotifications": true,
+      "dailyDigest": true,
+      "urgentAlerts": true,
+      "notificationRetentionPeriod": 90
+    },
+    "documentRequirements": {
+      "requiredDocuments": [
+        {
+          "id": "doc_001",
+          "name": "National ID Copy",
+          "type": "identity",
+          "required": true,
+          "description": "Clear copy of valid Egyptian national ID"
+        },
+        {
+          "id": "doc_002",
+          "name": "Income Certificate",
+          "type": "financial",
+          "required": true,
+          "description": "Official income certificate from employer"
+        },
+        {
+          "id": "doc_003",
+          "name": "Birth Certificate",
+          "type": "identity",
+          "required": true,
+          "description": "Birth certificate for all family members"
+        },
+        {
+          "id": "doc_004",
+          "name": "Marriage Certificate",
+          "type": "family",
+          "required": false,
+          "description": "Required if married"
+        },
+        {
+          "id": "doc_005",
+          "name": "Bank Statements",
+          "type": "financial",
+          "required": false,
+          "description": "Last 6 months bank statements"
+        },
+        {
+          "id": "doc_006",
+          "name": "Professional License",
+          "type": "professional",
+          "required": false,
+          "description": "Professional license for business applications"
+        },
+        {
+          "id": "doc_007",
+          "name": "Business License",
+          "type": "business",
+          "required": false,
+          "description": "Valid business license for commercial units"
+        },
+        {
+          "id": "doc_008",
+          "name": "Tax Records",
+          "type": "financial",
+          "required": false,
+          "description": "Recent tax payment records"
+        }
+      ],
+      "maxFileSize": 5242880,
+      "allowedFileTypes": [
+        "pdf",
+        "jpg",
+        "jpeg",
+        "png",
+        "doc",
+        "docx"
+      ]
+    },
+    "approvalCriteria": {
+      "incomeToUnitRatio": {
+        "studio": 8000,
+        "1br": 12000,
+        "2br": 18000,
+        "3br": 25000,
+        "4br": 35000,
+        "villa": 50000
+      },
+      "familySizeRequirements": {
+        "studio": 1,
+        "1br": 2,
+        "2br": 4,
+        "3br": 6,
+        "4br": 8,
+        "villa": 10
+      },
+      "ageRequirements": {
+        "minimum": 21,
+        "maximum": 65
+      },
+      "creditScore": {
+        "minimum": 650,
+        "excellent": 750
+      }
+    },
+    "systemConfiguration": {
+      "systemName": "Government Housing Management System",
+      "version": "1.0.0",
+      "maintenanceMode": false,
+      "backupSchedule": "daily",
+      "dataRetentionPeriod": 365,
+      "sessionTimeout": 30,
+      "maxLoginAttempts": 5,
+      "passwordMinLength": 8,
+      "twoFactorAuth": false
+    },
+    "regionalSettings": {
+      "timezone": "Africa/Cairo",
+      "dateFormat": "DD/MM/YYYY",
+      "currency": "EGP",
+      "language": "ar",
+      "weekStart": "sunday"
+    },
+    "reportingSettings": {
+      "autoGenerateReports": true,
+      "reportFrequency": "monthly",
+      "reportRecipients": [
+        "admin@housing.gov.eg"
+      ],
+      "includeCharts": true,
+      "exportFormats": [
+        "pdf",
+        "excel",
+        "csv"
+      ]
+    }
+  }
+}
