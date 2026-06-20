@@ -796,6 +796,110 @@ def _groq_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 600) -> str | N
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Provider: Google AI Studio (primary, 1500 req/day free)
+#           OpenRouter (fallback, 50 req/day free)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_OPENROUTER_VISION_MODEL = os.environ.get(
+    "OPENROUTER_VISION_MODEL", "google/gemma-4-31b-it:free"
+)
+_GOOGLE_VISION_MODEL = os.environ.get(
+    "GOOGLE_VISION_MODEL", "gemini-2.0-flash"
+)
+
+
+def _google_aistudio_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 1500) -> str | None:
+    """Google AI Studio vision call via OpenAI-compatible endpoint (1500 req/day free)."""
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=api_key,
+        )
+    except Exception as exc:
+        logger.warning("Google AI Studio client init failed: %s", exc)
+        return None
+
+    b64 = base64.b64encode(jpeg_bytes).decode()
+    try:
+        resp = client.chat.completions.create(
+            model=_GOOGLE_VISION_MODEL,
+            max_tokens=max_tokens,
+            temperature=0,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url",
+                     "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as exc:
+        logger.warning("Google AI Studio call failed: %s", exc)
+        return None
+
+
+def _openrouter_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 1500) -> str | None:
+    """OpenRouter vision call — fallback when Google AI Studio key is absent."""
+    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+        client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
+    except Exception as exc:
+        logger.warning("OpenRouter client init failed: %s", exc)
+        return None
+
+    b64 = base64.b64encode(jpeg_bytes).decode()
+    for attempt in range(2):  # max 2 attempts to preserve free-tier quota
+        try:
+            resp = client.chat.completions.create(
+                model=_OPENROUTER_VISION_MODEL,
+                max_tokens=max_tokens,
+                temperature=0,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }],
+                extra_headers={
+                    "HTTP-Referer": "https://findoor.app",
+                    "X-Title": "Findoor",
+                },
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as exc:
+            err = str(exc)
+            is_rate = "429" in err or "rate" in err.lower()
+            if is_rate and attempt == 0:
+                logger.warning("OpenRouter rate limited — waiting 62 s for quota reset …")
+                time.sleep(62)
+            else:
+                logger.warning("OpenRouter call failed: %s", exc)
+                return None
+    return None
+
+
+def _llm_vision_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 1500) -> str | None:
+    """Try Google AI Studio first (generous free tier), fall back to OpenRouter."""
+    if os.environ.get("GOOGLE_API_KEY"):
+        result = _google_aistudio_call(jpeg_bytes, prompt, max_tokens)
+        if result is not None:
+            return result
+        logger.warning("Google AI Studio failed — trying OpenRouter fallback …")
+    return _openrouter_call(jpeg_bytes, prompt, max_tokens)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Extraction passes
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -813,15 +917,9 @@ def _pass1_all_fields(image_path: str, enhanced: bool = False) -> dict | None:
 
     raw = None
 
-    if os.environ.get("GOOGLE_API_KEY"):
-        raw = _gemini_call(full_jpeg, _FULL_CARD_PROMPT, max_tokens=1500)
-        if raw:
-            logger.debug("Pass1 Gemini raw: %.300s", raw)
-
-    if not raw and os.environ.get("GROQ_API_KEY"):
-        raw = _groq_call(full_jpeg, _FULL_CARD_PROMPT, max_tokens=1500)
-        if raw:
-            logger.debug("Pass1 Groq raw: %.300s", raw)
+    raw = _llm_vision_call(full_jpeg, _FULL_CARD_PROMPT, max_tokens=1500)
+    if raw:
+        logger.debug("Pass1 OpenRouter raw: %.300s", raw)
 
     if not raw:
         return None
@@ -883,13 +981,8 @@ def _nid_matches_date(nid_la: str, date_arabic: str) -> bool:
 
 
 def _ask_nid(jpeg_bytes: bytes, prompt: str) -> str | None:
-    """Send jpeg_bytes to active LLM provider and return raw NID text."""
-    raw = None
-    if os.environ.get("GOOGLE_API_KEY"):
-        raw = _gemini_call(jpeg_bytes, prompt, max_tokens=80)
-    if not raw and os.environ.get("GROQ_API_KEY"):
-        raw = _groq_call(jpeg_bytes, prompt, max_tokens=80)
-    return raw
+    """Send jpeg_bytes to vision LLM and return raw NID text."""
+    return _llm_vision_call(jpeg_bytes, prompt, max_tokens=80)
 
 
 def _pass2_nid_only(image_path: str, known_date: str | None = None) -> str | None:
@@ -969,11 +1062,7 @@ def _pass_address_only(image_path: str) -> str | None:
         logger.error("Address zone prep error: %s", exc)
         return None
 
-    raw = None
-    if os.environ.get("GOOGLE_API_KEY"):
-        raw = _gemini_call(addr_jpeg, _ADDRESS_ZONE_PROMPT, max_tokens=100)
-    if not raw and os.environ.get("GROQ_API_KEY"):
-        raw = _groq_call(addr_jpeg, _ADDRESS_ZONE_PROMPT, max_tokens=100)
+    raw = _llm_vision_call(addr_jpeg, _ADDRESS_ZONE_PROMPT, max_tokens=100)
 
     if not raw:
         return None
@@ -998,11 +1087,7 @@ def _pass_date_only(image_path: str) -> str | None:
         logger.error("Date zone prep error: %s", exc)
         return None
 
-    raw = None
-    if os.environ.get("GOOGLE_API_KEY"):
-        raw = _gemini_call(date_jpeg, _DATE_ONLY_PROMPT, max_tokens=80)
-    if not raw and os.environ.get("GROQ_API_KEY"):
-        raw = _groq_call(date_jpeg, _DATE_ONLY_PROMPT, max_tokens=80)
+    raw = _openrouter_call(date_jpeg, _DATE_ONLY_PROMPT, max_tokens=80)
 
     if not raw:
         return None
@@ -1186,62 +1271,20 @@ def llm_extract(image_path: str, _meta: dict | None = None) -> dict | None:
     # Use true parallelism only when Gemini is available (high quota).
     # Groq free tier (30K TPM) can't handle 3 simultaneous vision calls —
     # stagger submissions by 3 s so token windows don't collide.
-    _groq_only = bool(os.environ.get("GROQ_API_KEY")) and not os.environ.get("GOOGLE_API_KEY")
-
     try:
-        # ── Layer 4: Parallel Pass 1 + date zone + NID strip ─────────────────
-        with ThreadPoolExecutor(max_workers=3) as ex:
-            f_full = ex.submit(_pass1_all_fields, deskew_path)
-            if _groq_only:
-                time.sleep(3)   # stagger to avoid simultaneous TPM hits
-            f_date = ex.submit(_pass_date_only,   deskew_path)
-            if _groq_only:
-                time.sleep(3)
-            f_nid  = ex.submit(_pass2_nid_only,   deskew_path, None)
-
-            r_full         = f_full.result()
-            date_from_zone = f_date.result()
-            nid_from_strip = f_nid.result()
-
-        # ── Pass 1 result ─────────────────────────────────────────────────────
+        # ── Single pass — conserve free-tier quota (20 req/min) ──────────────
+        # One API call extracts all 6 fields at once.
+        r_full = _pass1_all_fields(deskew_path)
         if r_full is None:
-            logger.warning("llm_extract: Pass1 returned nothing — trying enhanced")
-            r_full = _pass1_all_fields(deskew_path, enhanced=True)
-            if r_full is None:
-                return None
-            method_parts.append("pass1b")
-        else:
-            method_parts.append("pass1")
+            return None
+        method_parts.append("pass1")
 
         result       = r_full
         pass1_fields = {k for k, v in result.items() if v}
-        extracted_p1 = len(pass1_fields)
-
-        # ── Pass 1b: enhanced retry when yield is low ─────────────────────────
-        if extracted_p1 < 3:
-            logger.info("Low extraction (%d/6) — retrying with enhanced preprocessing …",
-                        extracted_p1)
-            result2 = _pass1_all_fields(deskew_path, enhanced=True)
-            if result2:
-                before = extracted_p1
-                for key in _FIELD_KEYS:
-                    if not result.get(key) and result2.get(key):
-                        result[key] = result2[key]
-                        pass1_fields.add(key)
-                added = sum(1 for v in result.values() if v) - before
-                logger.info("Enhanced retry filled in %d additional fields", added)
-                if "pass1b" not in method_parts:
-                    method_parts.append("pass1b")
-
-        # ── Merge date from zone pass ─────────────────────────────────────────
-        if date_from_zone and not result.get("تاريخ الميلاد"):
-            result["تاريخ الميلاد"] = date_from_zone
-            zone_fields.add("تاريخ الميلاد")
-            method_parts.append("date_zone")
 
         known_date = result.get("تاريخ الميلاد")
 
-        # ── Cross-validate existing NID against date ──────────────────────────
+        # Cross-validate NID against date (no extra API call)
         nid_ar = result.get("الرقم القومي")
         if nid_ar and known_date:
             nid_la           = nid_ar.translate(_AR2LA)
@@ -1249,79 +1292,19 @@ def llm_extract(image_path: str, _meta: dict | None = None) -> dict | None:
             structurally_bad = not _validate_nid(nid_la)
             if date_mismatch or structurally_bad:
                 logger.warning(
-                    "NID %s cleared (structurally_bad=%s date_mismatch=%s) — triggering recovery",
+                    "NID %s cleared (structurally_bad=%s date_mismatch=%s)",
                     nid_la, structurally_bad, date_mismatch)
                 result["الرقم القومي"] = None
                 pass1_fields.discard("الرقم القومي")
-                nid_ar = None
-
-        # ── Adopt parallel NID strip result (with date cross-check) ──────────
-        if not result.get("الرقم القومي") and nid_from_strip:
-            la_strip = nid_from_strip.translate(_AR2LA)
-            if not known_date or _nid_matches_date(la_strip, known_date):
-                result["الرقم القومي"] = nid_from_strip
-                zone_fields.add("الرقم القومي")
-                method_parts.append("nid_strip")
-                logger.info("Parallel NID strip accepted: %s", nid_from_strip)
-            else:
-                logger.info("Parallel NID strip fails date check — will re-run with hint")
-                nid_from_strip = None
-
-        # ── Pass 2 + 3: NID recovery with date hint ───────────────────────────
-        if not result.get("الرقم القومي"):
-            logger.info("NID missing — running NID recovery with date hint …")
-            nid_ar = _pass2_nid_only(deskew_path, known_date=known_date)
-
-            if not nid_ar:
-                logger.info("Pass2 failed — running Pass3 (full-card NID focus) …")
-                try:
-                    full_jpeg = _prep_full_card(deskew_path)
-                    raw3      = _ask_nid(full_jpeg, _NID_FULLCARD_PROMPT)
-                    if raw3:
-                        digits_ar = _parse_nid_digits(raw3)
-                        if digits_ar:
-                            la3 = digits_ar.translate(_AR2LA)
-                            if known_date and not _nid_matches_date(la3, known_date):
-                                logger.info("Pass3 NID fails date check — discarding")
-                            else:
-                                nid_ar = digits_ar
-                                logger.info("Pass3 NID extracted: %s", digits_ar)
-                except Exception as exc:
-                    logger.warning("Pass3 error: %s", exc)
-
-            if nid_ar:
-                result["الرقم القومي"] = nid_ar
-                zone_fields.add("الرقم القومي")
-                method_parts.append("nid_recovery")
-                if not result.get("تاريخ الميلاد"):
-                    nid_la = nid_ar.translate(_AR2LA)
-                    if _validate_nid(nid_la):
-                        century = "19" if nid_la[0] == "2" else "20"
-                        y  = century + nid_la[1:3]
-                        mo = nid_la[3:5]
-                        d  = nid_la[5:7]
-                        result["تاريخ الميلاد"] = _normalise_date(f"{y}/{mo}/{d}")
-                        zone_fields.add("تاريخ الميلاد")
-                        logger.info("Date derived from recovered NID")
-
-        # ── Address recovery ──────────────────────────────────────────────────
-        if not result.get("العنوان بالكامل"):
-            logger.info("Address missing — running dedicated address-zone extraction …")
-            addr = _pass_address_only(deskew_path)
-            if addr:
-                result["العنوان بالكامل"] = addr
-                zone_fields.add("العنوان بالكامل")
-                method_parts.append("addr_zone")
 
         extracted = sum(1 for v in result.values() if v)
         logger.info("llm_extract final: %d/6 fields  method=%s  deskewed=%s",
                     extracted, "+".join(method_parts), deskewed)
 
-        # ── Populate caller-supplied meta dict ────────────────────────────────
         if _meta is not None:
             _meta["method_detail"] = "+".join(method_parts) if method_parts else "pass1"
             _meta["deskewed"]      = deskewed
-            _meta["confidence"]    = _confidence(result, pass1_fields, zone_fields)
+            _meta["confidence"]    = _confidence(result, pass1_fields, set())
             nid_val  = result.get("الرقم القومي") or ""
             nid_la_f = nid_val.translate(_AR2LA)
             _meta["derived_fields"] = _derive_from_nid_full(nid_la_f)
@@ -1338,4 +1321,4 @@ def llm_extract(image_path: str, _meta: dict | None = None) -> dict | None:
 
 def has_llm_key() -> bool:
     """True if at least one LLM API key is set in the environment."""
-    return bool(os.environ.get("GOOGLE_API_KEY") or os.environ.get("GROQ_API_KEY"))
+    return bool(os.environ.get("OPENROUTER_API_KEY"))

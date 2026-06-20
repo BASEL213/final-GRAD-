@@ -20,14 +20,18 @@ import pandas as pd
 from dotenv import load_dotenv
 load_dotenv()
 
-from groq import Groq
-from config import GROQ_API_KEY, GROQ_MODEL, GEMINI_API_KEY, GEMINI_MODEL, TOP_K_RESULTS, MAX_CHAT_HISTORY
+from openai import OpenAI
+from config import OPENROUTER_API_KEY, OPENROUTER_MODEL, GROQ_MODEL, GEMINI_API_KEY, GEMINI_MODEL, TOP_K_RESULTS, MAX_CHAT_HISTORY
 from chroma_store import query_documents
 
-if not GROQ_API_KEY:
-    raise ValueError("No Groq API key found.")
+if not OPENROUTER_API_KEY:
+    raise ValueError("OPENROUTER_API_KEY environment variable must be set.")
 
-client = Groq(api_key=GROQ_API_KEY)
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+    timeout=15.0,
+)
 
 import time as _wall_time
 import json as _json
@@ -1073,31 +1077,39 @@ def build_context(retrieved_docs: list[dict]) -> str:
 # MAIN CHAT
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _call_groq(messages: list, retries: int = 2) -> str:
-    """Call Groq with timeout and retry on transient failures."""
+def _call_groq(messages: list, retries: int = 1) -> str:
+    """Call OpenRouter with retry on transient failures."""
     import time as _time
     last_err = None
     for attempt in range(retries + 1):
         try:
             response = client.chat.completions.create(
-                model=GROQ_MODEL,
+                model=OPENROUTER_MODEL,
                 messages=messages,
                 max_tokens=1024,
                 temperature=0.3,
-                timeout=30,         # 30-second hard timeout
+                extra_headers={
+                    "HTTP-Referer": "https://findoor.app",
+                    "X-Title": "Findoor",
+                },
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
             last_err = e
             err_str = str(e).lower()
-            # Daily token quota exhausted — no point retrying, surface a clear message
-            if "tokens per day" in err_str or ("tokens" in err_str and "limit" in err_str and "day" in err_str):
+            # Daily quota exhausted — fail immediately, no retry
+            is_daily = (
+                "per-day" in err_str or "per day" in err_str or
+                "tokens per day" in err_str or "daily" in err_str
+            )
+            if is_daily:
                 raise RuntimeError(
                     "النظام وصل إلى الحد اليومي لمعالجة الطلبات. "
-                    "يرجى المحاولة مرة أخرى بعد قليل (عادةً خلال ساعة)."
+                    "يرجى المحاولة مرة أخرى غداً."
                 ) from e
-            if attempt < retries and any(x in err_str for x in ["rate", "429", "503", "502", "timeout"]):
-                _time.sleep(2 ** attempt)   # 1s, 2s backoff
+            # Per-minute rate limit — retry once after a short wait
+            if attempt < retries and any(x in err_str for x in ["503", "502"]):
+                _time.sleep(2)
                 continue
             break
     raise last_err
@@ -1212,7 +1224,11 @@ def chat(query: str, session_id: str = "default") -> dict:
         sources  = ["قاعدة البيانات المباشرة"]
     else:
         # ── Layer 2: ChromaDB + Groq ──────────────────────────────────────
-        retrieved_docs = query_documents(query, top_k=TOP_K_RESULTS)
+        try:
+            retrieved_docs = query_documents(query, top_k=TOP_K_RESULTS)
+        except Exception as _chroma_err:
+            print(f"[rag_engine] ChromaDB error (treating as empty): {_chroma_err}")
+            retrieved_docs = []
 
         # ── Empty-context guard: if ChromaDB found nothing, return a
         #    canned "no data" response immediately without calling the LLM.

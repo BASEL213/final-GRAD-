@@ -8,10 +8,10 @@ flask-cors>=4.0.1
 python-dotenv>=1.0.1
 
 # ── LLM providers (at least one API key required for fast mode) ───────────────
-# Gemini (preferred): set GOOGLE_API_KEY in .env
+# OpenRouter / Google AI Studio via OpenAI-compatible SDK
+openai>=1.0.0
+# Google Gemini direct SDK (fallback)
 google-genai>=1.0.0
-# Groq fallback: set GROQ_API_KEY in .env
-groq>=1.0.0
 
 # ── Image processing ──────────────────────────────────────────────────────────
 # Use headless variant on servers (no display required)

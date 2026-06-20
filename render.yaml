@@ -26,6 +26,13 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      # AI service URLs (set after first deploy — use the actual Render URLs)
+      - key: FASTAPI_URL
+        value: https://findoor-ai.onrender.com
+      - key: AI_API_KEY
+        sync: false
+      - key: FLASK_OCR_URL
+        value: https://findoor-ocr.onrender.com
 
   - type: web
     name: findoor-frontend
@@ -45,36 +52,31 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn Backend.main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: GROQ_API_KEY
+      - key: OPENROUTER_API_KEY
         sync: false
-      - key: GEMINI_API_KEY
+      - key: OPENROUTER_MODEL
+        value: meta-llama/llama-3.3-70b-instruct:free
+      - key: GOOGLE_API_KEY
         sync: false
       - key: API_KEY
-        generateValue: true
+        sync: false
       - key: MONGODB_URI
         sync: false
       - key: ALLOWED_ORIGINS
-        sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: findoor-redis
-          property: connectionString
+        value: "*"
 
   - type: web
     name: findoor-ocr
     runtime: docker
     rootDir: ai/ocr
-    dockerfilePath: ai/ocr/Dockerfile
     envVars:
-      - key: GROQ_API_KEY
+      - key: OPENROUTER_API_KEY
         sync: false
+      - key: OPENROUTER_VISION_MODEL
+        value: google/gemma-4-31b-it:free
       - key: GOOGLE_API_KEY
         sync: false
+      - key: GOOGLE_VISION_MODEL
+        value: gemini-2.0-flash
       - key: PORT
         value: "5001"
-
-  - type: redis
-    name: findoor-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru

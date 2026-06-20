@@ -105,7 +105,7 @@ def _quality_check(path: str) -> str | None:
         if float(gray.mean()) < 40:
             return ("Image is too dark. Use better lighting or flash and retake the photo.")
         blur_score = float(_cv2.Laplacian(gray, _cv2.CV_64F).var())
-        if blur_score < 80:
+        if blur_score < 30:
             return ("Image is too blurry. Hold your phone steady and retake the photo.")
         return None
     except Exception as exc:
@@ -113,12 +113,10 @@ def _quality_check(path: str) -> str | None:
         return None   # never block on quality-check failures
 
 if _USE_LLM:
-    _provider = "Gemini" if os.environ.get("GOOGLE_API_KEY") else "Groq"
-    logger.info("LLM extraction ENABLED — primary provider: %s", _provider)
-    logger.info("PaddleOCR will be used as fallback if LLM returns nothing.")
+    logger.info("LLM extraction ENABLED — provider: OpenRouter (%s)",
+                os.environ.get("OPENROUTER_VISION_MODEL", "google/gemini-2.0-flash-exp:free"))
 else:
-    logger.info("No LLM API key found — using PaddleOCR only.")
-    logger.info("Set GOOGLE_API_KEY or GROQ_API_KEY in .env to enable fast LLM mode.")
+    logger.info("No OPENROUTER_API_KEY found — set it in .env to enable LLM OCR.")
 
 # ── Warm-up PaddleOCR (only when it will be the primary path) ─────────────────
 
@@ -215,17 +213,10 @@ def health():
 @app.route("/status", methods=["GET"])
 def status():
     """Shows which extraction path is active and expected latency."""
-    llm_provider = None
-    if os.environ.get("GOOGLE_API_KEY"):
-        llm_provider = "gemini-2.5-flash"
-    elif os.environ.get("GROQ_API_KEY"):
-        llm_provider = "meta-llama/llama-4-scout-17b-16e-instruct"
-
     return jsonify({
         "llm_enabled":      _USE_LLM,
-        "llm_provider":     llm_provider,
-        "paddle_ready":     not _USE_LLM,
-        "expected_latency": "3-15 s" if _USE_LLM else "~220 s",
+        "llm_provider":     os.environ.get("OPENROUTER_VISION_MODEL", "google/gemini-2.0-flash-exp:free") if _USE_LLM else None,
+        "expected_latency": "3-10 s" if _USE_LLM else "~220 s",
         "max_upload_mb":    _MAX_UPLOAD_MB,
     })
 
@@ -313,8 +304,7 @@ def extract():
             result = llm_extract(tmp_path, _meta=ocr_meta)
 
             if result and any(v for v in result.values()):
-                base_provider = "gemini" if os.environ.get("GOOGLE_API_KEY") else "groq"
-                method_used   = f"{base_provider}+{ocr_meta.get('method_detail', 'pass1')}"
+                method_used   = f"openrouter+{ocr_meta.get('method_detail', 'pass1')}"
                 log.info("LLM extraction succeeded (%s)", method_used)
 
                 # Paddle NID fill-in if NID still missing after all LLM passes
@@ -335,10 +325,10 @@ def extract():
             except ModuleNotFoundError:
                 return jsonify({
                     "success":    False,
-                    "error":      "Could not read the card. Please use a clearer, "
-                                  "well-lit photo of the entire NID card.",
+                    "error":      "OCR service is temporarily busy. Please wait a moment "
+                                  "and try again with a clear, well-lit photo of the NID card.",
                     "request_id": rid,
-                }), 422
+                }), 503
 
         # ── Summarise & build response ────────────────────────────────────────
         extracted = sum(1 for v in result.values() if v)

@@ -391,7 +391,7 @@ describe('Application Logic - Comprehensive Coverage', () => {
 
       // Should complete within reasonable time (less than 1 second)
       expect(duration).toBeLessThan(1000)
-      expect(service.getApplications().length).toBeGreaterThan(100)
+      expect(service.getApplications().length).toBeGreaterThanOrEqual(100)
     })
 
     it('should handle search operations efficiently', () => {

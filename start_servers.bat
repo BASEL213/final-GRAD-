@@ -5,8 +5,8 @@ echo   Findoor — Starting all services
 echo ============================================================
 echo.
 
-echo [1/5] Flutter Web App (port 4000)...
-start "Findoor Flutter Web :4000" cmd /k "cd /d "B:\integerated grad\mobile" && flutter run -d chrome --web-port 4000"
+echo [1/5] Flutter Web App (port 4001)...
+start "Findoor Flutter Web :4001" cmd /k "cd /d "B:\integerated grad\mobile" && flutter run -d chrome --web-port 4001"
 
 timeout /t 3 /nobreak >nul
 
@@ -33,7 +33,7 @@ echo ============================================================
 echo   All 5 servers launching in separate windows.
 echo   Wait ~15 seconds for them to fully start.
 echo.
-echo   Flutter Web    ->  http://localhost:4000
+echo   Flutter Web    ->  http://localhost:4001
 echo   Web Dashboard  ->  http://localhost:5173
 echo   Node.js API    ->  http://localhost:3000/api
 echo   FastAPI        ->  http://localhost:5000

@@ -5,13 +5,15 @@ _base = os.path.dirname(__file__)
 load_dotenv(os.path.join(_base, ".env"))
 load_dotenv(os.path.join(_base, "..", ".env"))
 
-# Groq LLM — Plan A (fast, great Arabic, 100K tokens/day free)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = "llama-3.3-70b-versatile"
+# OpenRouter — single key for all LLM calls (openrouter.ai)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL   = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
-# Google Gemini — Plan B LLM (1M tokens/day free, conversational)
+# Legacy keys kept so existing imports don't break
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL    = OPENROUTER_MODEL
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL   = "gemini-2.0-flash"
 
 # Embeddings (lightweight, runs on CPU)
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
