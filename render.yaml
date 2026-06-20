@@ -1,0 +1,80 @@
+services:
+  - type: web
+    name: findoor-backend
+    runtime: node
+    rootDir: web/backend
+    buildCommand: npm ci --only=production
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE
+        value: 30d
+      - key: FRONTEND_URL
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+  - type: web
+    name: findoor-frontend
+    runtime: static
+    rootDir: web/frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  - type: web
+    name: findoor-ai
+    runtime: python
+    rootDir: ai/ai-gateway
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn Backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: API_KEY
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: findoor-redis
+          property: connectionString
+
+  - type: web
+    name: findoor-ocr
+    runtime: docker
+    rootDir: ai/ocr
+    dockerfilePath: ai/ocr/Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: PORT
+        value: "5001"
+
+  - type: redis
+    name: findoor-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru

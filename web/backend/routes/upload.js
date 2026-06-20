@@ -1,14 +1,16 @@
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
+const multer  = require('multer');
+const path    = require('path');
 const uploadController = require('../controllers/uploadController');
+const protect      = require('../middleware/protect');
+const requireAdmin = require('../middleware/requireAdmin');
 
 const router = express.Router();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, 'uploads/');
+        cb(null, path.join(__dirname, '../uploads/'));
     },
     filename: function (req, file, cb) {
         // Create unique filename with timestamp and random number
@@ -39,8 +41,9 @@ const upload = multer({
 
 // @route   POST /api/upload/documents
 // @desc    Upload multiple documents
-// @access  Public (for now, should be private in production)
-router.post('/documents', 
+// @access  Private
+router.post('/documents',
+    protect,
     upload.fields([
         { name: 'nationalIdCopy', maxCount: 1 },
         { name: 'incomeCertificate', maxCount: 1 },
@@ -64,8 +67,9 @@ router.post('/application-docs/:applicationId',
 
 // @route   POST /api/upload/single
 // @desc    Upload single document
-// @access  Public (for now, should be private in production)
+// @access  Private
 router.post('/single',
+    protect,
     upload.single('document'),
     uploadController.uploadDocuments
 );
@@ -76,14 +80,12 @@ router.post('/single',
 router.get('/file/:filename', uploadController.getFileInfo);
 
 // @route   DELETE /api/upload/file/:filename
-// @desc    Delete file
-// @access  Private (should be admin only in production)
-router.delete('/file/:filename', uploadController.deleteFile);
+// @access  Admin only
+router.delete('/file/:filename', protect, requireAdmin, uploadController.deleteFile);
 
 // @route   GET /api/upload/files
-// @desc    Get all uploaded files
-// @access  Private (should be admin only in production)
-router.get('/files', uploadController.getAllFiles);
+// @access  Admin only
+router.get('/files', protect, requireAdmin, uploadController.getAllFiles);
 
 // Error handling middleware for multer
 router.use((error, req, res, next) => {

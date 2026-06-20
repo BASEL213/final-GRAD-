@@ -25,7 +25,7 @@ const apiCall = async (url, options = {}) => {
       fetch(`${API_BASE_URL}${url}`, {
         headers: {
           'Content-Type': 'application/json',
-          ...(localStorage.getItem('authToken') ? { Authorization: `Bearer ${localStorage.getItem('authToken')}` } : {}),
+          ...(sessionStorage.getItem('authToken') ? { Authorization: `Bearer ${sessionStorage.getItem('authToken')}` } : {}),
           ...options.headers,
         },
         signal: controller.signal,
@@ -54,7 +54,7 @@ const apiCall = async (url, options = {}) => {
 // Applications API
 export const applicationsAPI = {
   // Get all applications
-  getAll: async (params = { limit: 500 }) => {
+  getAll: async (params = { limit: 50 }) => {
     const queryString = new URLSearchParams(params).toString();
     const url = queryString ? `/applications?${queryString}` : '/applications';
     return apiCall(url);
@@ -147,7 +147,7 @@ export const projectsAPI = {
 
 // Users API
 export const usersAPI = {
-  getAll: async (params = { limit: 500 }) => {
+  getAll: async (params = { limit: 50 }) => {
     const queryString = new URLSearchParams(params).toString();
     const url = queryString ? `/users?${queryString}` : '/users';
     return apiCall(url);
@@ -183,7 +183,7 @@ export const usersAPI = {
 
 // Audit Logs API
 export const auditLogsAPI = {
-  getAll: async (params = { limit: 500 }) => {
+  getAll: async (params = { limit: 50 }) => {
     const queryString = new URLSearchParams(params).toString();
     const url = queryString ? `/auditLogs?${queryString}` : '/auditLogs';
     return apiCall(url);

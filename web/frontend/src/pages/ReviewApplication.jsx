@@ -191,6 +191,47 @@ const ReviewApplication = () => {
               <div className="card border-0 shadow-sm mb-4">
                 <div className="card-header bg-light">
                   <h5 className="mb-0">
+                    <i className="bi bi-person me-2"></i>
+                    Applicant Information
+                  </h5>
+                </div>
+                <div className="card-body">
+                  <div className="row">
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Full Name</label>
+                      <p className="form-control-plaintext">{application.applicantName || application.name || 'N/A'}</p>
+                    </div>
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">National ID</label>
+                      <p className="form-control-plaintext font-monospace">{application.nationalId || 'N/A'}</p>
+                    </div>
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Email</label>
+                      <p className="form-control-plaintext">{application.applicantEmail || application.email || 'N/A'}</p>
+                    </div>
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Phone</label>
+                      <p className="form-control-plaintext">{application.applicantPhone || application.phone || 'N/A'}</p>
+                    </div>
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Monthly Income</label>
+                      <p className="form-control-plaintext">{application.income != null ? `${Number(application.income).toLocaleString()} EGP` : 'N/A'}</p>
+                    </div>
+                    <div className="col-md-6 mb-3">
+                      <label className="form-label">Family Size</label>
+                      <p className="form-control-plaintext">{application.familySize || 'N/A'}</p>
+                    </div>
+                    <div className="col-12 mb-3">
+                      <label className="form-label">Current Housing Situation</label>
+                      <p className="form-control-plaintext">{application.currentHousing || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card border-0 shadow-sm mb-4">
+                <div className="card-header bg-light">
+                  <h5 className="mb-0">
                     <i className="bi bi-building me-2"></i>
                     Project Information
                   </h5>

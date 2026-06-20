@@ -16,11 +16,13 @@ Providers  (priority order, set in .env):
 from __future__ import annotations
 
 import base64
+import datetime
 import json
 import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -46,6 +48,20 @@ _ALEF  = re.compile(r"[أإآٱ]")
 _GOV_CODES = {
     "01","02","03","04","11","12","13","14","15","16","17","18","19",
     "21","22","23","24","25","26","27","28","29","31","32","33","34","35","88",
+}
+
+# Full Arabic governorate names keyed by the same 2-digit code
+_GOV_NAMES = {
+    "01": "القاهرة",       "02": "الإسكندرية",   "03": "بورسعيد",
+    "04": "السويس",        "11": "دمياط",         "12": "الدقهلية",
+    "13": "الشرقية",       "14": "القليوبية",     "15": "كفر الشيخ",
+    "16": "الغربية",       "17": "المنوفية",      "18": "البحيرة",
+    "19": "الإسماعيلية",   "21": "الجيزة",        "22": "بني سويف",
+    "23": "الفيوم",        "24": "المنيا",         "25": "أسيوط",
+    "26": "سوهاج",         "27": "قنا",            "28": "أسوان",
+    "29": "الأقصر",        "31": "البحر الأحمر",  "32": "الوادي الجديد",
+    "33": "مطروح",         "34": "شمال سيناء",    "35": "جنوب سيناء",
+    "88": "خارج الجمهورية",
 }
 
 # Header noise words that should never appear in the name
@@ -216,20 +232,20 @@ def _prep_full_card(image_path: str, enhanced: bool = False) -> bytes:
     return _to_jpeg(img, quality=95)
 
 
-def _prep_nid_strip(image_path: str, color: bool = False) -> bytes:
+def _prep_nid_strip(image_path: str, color: bool = False, top_frac: float = 0.55) -> bytes:
     """
-    Crop the bottom ~45% of the card (where the NID lives), scale 3×,
+    Crop the bottom portion of the card (where the NID lives), scale 3×,
     apply binarisation to maximise digit contrast → JPEG bytes.
 
-    color=True skips binarization and returns the color strip instead —
-    useful for old-style cards where binarization washes out gold-toned digits.
+    color=True   — skip binarization, return color strip (gold-toned old cards).
+    top_frac     — where to start the crop (0.55 = bottom 45%).
     """
     img = cv2.imread(image_path)
     if img is None:
         raise FileNotFoundError(f"Cannot read image: {image_path}")
 
     h, w = img.shape[:2]
-    strip = img[int(h * 0.55):, :]        # bottom 45% — safer for tilted shots
+    strip = img[int(h * top_frac):, :]
 
     # Scale up for clarity
     scale = min(3, max(1, 900 // max(strip.shape[:2])))
@@ -287,7 +303,7 @@ def _prep_address_zone(image_path: str) -> bytes:
     return _to_jpeg(zone, quality=95)
 
 
-def _prep_nid_strip_tophat(image_path: str) -> bytes:
+def _prep_nid_strip_tophat(image_path: str, top_frac: float = 0.55) -> bytes:
     """
     Specialized strip preprocessing for OLD-style Egyptian NID cards (gold/amber
     background with pyramid watermark).
@@ -295,13 +311,14 @@ def _prep_nid_strip_tophat(image_path: str) -> bytes:
     Key insight: gold is HIGH in the red channel, dark ink is LOW in red.
     A morphological black top-hat on the red channel isolates dark digit strokes
     from the uneven gold background far better than standard CLAHE + Otsu.
+    top_frac — crop start fraction (default 0.55 = bottom 45%).
     """
     img = cv2.imread(image_path)
     if img is None:
         raise FileNotFoundError(f"Cannot read image: {image_path}")
 
     h, w = img.shape[:2]
-    strip = img[int(h * 0.55):, :]
+    strip = img[int(h * top_frac):, :]
 
     # Scale 4× — more pixels per digit = better Groq recognition
     scale = min(4, max(2, 1200 // max(strip.shape[:2])))
@@ -478,6 +495,21 @@ def _validate_nid(nid_western: str) -> bool:
     if not (1 <= mo <= 12 and 1 <= day <= 31):
         return False
     return nid_western[7:9] in _GOV_CODES
+
+
+def _nid_checksum_ok(nid_western: str) -> bool:
+    """
+    Egyptian NID check digit (position 14) — Luhn-variant.
+    Used to rank candidates, NOT to reject structurally valid NIDs.
+    """
+    if len(nid_western) != 14 or not nid_western.isdigit():
+        return False
+    weights = [2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1]
+    total = sum(
+        (d * w if d * w < 10 else d * w - 9)
+        for d, w in zip((int(c) for c in nid_western), weights)
+    )
+    return total % 10 == 0
 
 
 def _normalise_name(val: str) -> str | None:
@@ -710,8 +742,18 @@ def _gemini_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 1500) -> str 
 _GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 
+def _groq_retry_wait(err: str) -> float:
+    """
+    Parse 'Please try again in Xs' from a Groq 429 error and return
+    that many seconds + 2 buffer.  Falls back to 15 if not parseable.
+    """
+    import re as _re
+    m = _re.search(r"try again in (\d+(?:\.\d+)?)s", err)
+    return float(m.group(1)) + 2.0 if m else 15.0
+
+
 def _groq_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 600) -> str | None:
-    """Groq vision call with up to 3 attempts. Returns raw text or None."""
+    """Groq vision call — up to 4 attempts with parsed retry-after waits."""
     api_key = os.environ.get("GROQ_API_KEY", "")
     if not api_key:
         return None
@@ -723,7 +765,7 @@ def _groq_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 600) -> str | N
         return None
 
     b64 = base64.b64encode(jpeg_bytes).decode()
-    for attempt in range(3):
+    for attempt in range(4):
         try:
             resp = client.chat.completions.create(
                 model=_GROQ_MODEL,
@@ -742,14 +784,14 @@ def _groq_call(jpeg_bytes: bytes, prompt: str, max_tokens: int = 600) -> str | N
             return resp.choices[0].message.content.strip()
         except Exception as exc:
             err = str(exc)
-            is_rate = "429" in err or "rate" in err.lower()
-            if attempt < 2:
-                wait = 5 if is_rate else 3
-                logger.warning("Groq attempt %d failed (%s) — retrying in %ds …",
-                               attempt + 1, exc, wait)
+            is_rate = "429" in err or "rate_limit" in err.lower()
+            if attempt < 3:
+                wait = _groq_retry_wait(err) if is_rate else 3.0
+                logger.warning("Groq attempt %d failed (%s) — retrying in %.1fs …",
+                               attempt + 1, "rate-limit" if is_rate else exc, wait)
                 time.sleep(wait)
             else:
-                logger.warning("Groq call failed after 3 attempts: %s", exc)
+                logger.warning("Groq call failed after 4 attempts: %s", exc)
     return None
 
 
@@ -853,21 +895,18 @@ def _ask_nid(jpeg_bytes: bytes, prompt: str) -> str | None:
 def _pass2_nid_only(image_path: str, known_date: str | None = None) -> str | None:
     """
     Pass 2 — crop and zoom the NID strip, ask for just the 14-digit number.
-    Tries three preprocessing variants in order:
-      1. Binary (standard adaptive — works on modern blue cards)
-      2. Color  (color CLAHE — intermediate)
-      3. Top-hat on red channel (best for old gold/amber-background cards)
 
-    Each variant is tried twice:
-      - First with the generic NID prompt
-      - Then with a date-prefix hint prompt (if date is known) — reduces
-        the problem from reading 14 digits to reading only the last 7
+    Tries three preprocessing variants × four crop ratios (Layer 5):
+      binary / color / tophat  at  top_frac 0.55, 0.50, 0.60, 0.65
 
-    known_date: if provided, discard NIDs whose date portion doesn't match.
+    Each variant gets two prompts: generic then date-hint (if known).
+    Checksum-passing candidates are returned immediately (Layer 3).
+    Structural-only candidates are queued and returned as last resort.
     """
     hint_prompt = _build_nid_hint_prompt(known_date)
+    fallback_candidates: list[str] = []
 
-    def _valid(digits_ar: str | None) -> bool:
+    def _valid_struct(digits_ar: str | None) -> bool:
         if not digits_ar:
             return False
         la = digits_ar.translate(_AR2LA)
@@ -885,27 +924,38 @@ def _pass2_nid_only(image_path: str, known_date: str | None = None) -> str | Non
         except Exception as exc:
             logger.error("Pass2 %s prep error: %s", label, exc)
             return None
-        # Try generic prompt first, then hint-enhanced prompt
         for pname, prompt in [("generic", _NID_ONLY_PROMPT), ("hint", hint_prompt)]:
             if pname == "hint" and hint_prompt == _NID_ONLY_PROMPT:
-                break  # no date → no point retrying same prompt
+                break
             raw = _ask_nid(jpeg, prompt)
             if not raw:
                 continue
             digits_ar = _parse_nid_digits(raw)
-            if _valid(digits_ar):
-                logger.info("Pass2 NID extracted (%s/%s): %s", label, pname, digits_ar)
-                return digits_ar
-            logger.info("Pass2 NID (%s/%s) invalid: %r", label, pname, (raw or "").strip()[:50])
+            if _valid_struct(digits_ar):
+                la = digits_ar.translate(_AR2LA)
+                if _nid_checksum_ok(la):
+                    logger.info("Pass2 NID (%s/%s, checksum OK): %s", label, pname, digits_ar)
+                    return digits_ar          # best possible — return immediately
+                logger.info("Pass2 NID (%s/%s, checksum FAIL — queued): %s", label, pname, digits_ar)
+                fallback_candidates.append(digits_ar)
+            else:
+                logger.info("Pass2 NID (%s/%s) invalid: %r", label, pname, (raw or "").strip()[:50])
         return None
 
-    r = _try("binary",  lambda: _prep_nid_strip(image_path, color=False))
-    if r: return r
-    r = _try("color",   lambda: _prep_nid_strip(image_path, color=True))
-    if r: return r
-    logger.info("Pass2 binary+color failed — retrying with top-hat (gold card) …")
-    r = _try("tophat",  lambda: _prep_nid_strip_tophat(image_path))
-    return r
+    # Four crop ratios × three preprocessing variants
+    for top_frac in [0.55, 0.50, 0.60, 0.65]:
+        r = _try(f"binary@{top_frac}", lambda tf=top_frac: _prep_nid_strip(image_path, color=False, top_frac=tf))
+        if r: return r
+        r = _try(f"color@{top_frac}",  lambda tf=top_frac: _prep_nid_strip(image_path, color=True,  top_frac=tf))
+        if r: return r
+        r = _try(f"tophat@{top_frac}", lambda tf=top_frac: _prep_nid_strip_tophat(image_path, top_frac=tf))
+        if r: return r
+
+    if fallback_candidates:
+        logger.warning("Pass2: all checksums failed — returning best structural candidate: %s",
+                       fallback_candidates[0])
+        return fallback_candidates[0]
+    return None
 
 
 def _pass_address_only(image_path: str) -> str | None:
@@ -967,117 +1017,323 @@ def _pass_date_only(image_path: str) -> str | None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Perspective correction (Layer 1)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _auto_deskew(image_path: str) -> str:
+    """
+    Detect the ID card's 4 corners and apply perspective correction.
+    Returns path to a corrected temp image, or the original path if no
+    quadrilateral is found.  Card aspect ratio: 85.6×54 mm → ~1.585:1.
+    """
+    import tempfile as _tf
+    img = cv2.imread(image_path)
+    if img is None:
+        return image_path
+
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.bilateralFilter(gray, 9, 75, 75)
+    edges = cv2.Canny(gray, 30, 100)
+    edges = cv2.dilate(edges, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)), iterations=2)
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
+
+    quad = None
+    min_area = w * h * 0.20
+    for cnt in contours:
+        peri   = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+        if len(approx) == 4 and cv2.contourArea(approx) > min_area:
+            quad = approx.reshape(4, 2).astype(np.float32)
+            break
+
+    if quad is None:
+        logger.debug("_auto_deskew: no quadrilateral found — using original")
+        return image_path
+
+    # Sort corners: TL, TR, BR, BL
+    s    = quad.sum(axis=1)
+    diff = np.diff(quad, axis=1).flatten()
+    tl = quad[np.argmin(s)]
+    br = quad[np.argmax(s)]
+    tr = quad[np.argmin(diff)]
+    bl = quad[np.argmax(diff)]
+
+    card_w, card_h = 800, int(800 / 1.585)
+    src = np.array([tl, tr, br, bl], dtype=np.float32)
+    dst = np.array([[0, 0], [card_w, 0], [card_w, card_h], [0, card_h]], dtype=np.float32)
+
+    M = cv2.getPerspectiveTransform(src, dst)
+    corrected = cv2.warpPerspective(img, M, (card_w, card_h), flags=cv2.INTER_LANCZOS4)
+
+    suffix = os.path.splitext(image_path)[1] or ".jpg"
+    tmp = _tf.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp.close()
+    cv2.imwrite(tmp.name, corrected)
+    logger.info("_auto_deskew: perspective corrected → %s", tmp.name)
+    return tmp.name
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Derived fields & confidence (Layers 6 + 7)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _derive_from_nid_full(nid_western: str) -> dict:
+    """
+    Derive gender, governorate name, and age from a validated 14-digit NID.
+    Returns empty dict if NID is invalid.
+    """
+    if not _validate_nid(nid_western):
+        return {}
+
+    century  = "19" if nid_western[0] == "2" else "20"
+    year     = int(century + nid_western[1:3])
+    month    = int(nid_western[3:5])
+    day      = int(nid_western[5:7])
+    gov_code = nid_western[7:9]
+    serial_d = int(nid_western[12])    # digit 13 (0-indexed): odd=male, even=female
+
+    gender      = "ذكر" if serial_d % 2 != 0 else "أنثى"
+    governorate = _GOV_NAMES.get(gov_code, "")
+
+    age = None
+    try:
+        birth = datetime.date(year, month, day)
+        today = datetime.date.today()
+        age   = (today.year - birth.year
+                 - ((today.month, today.day) < (birth.month, birth.day)))
+    except ValueError:
+        pass
+
+    out: dict = {"gender": gender, "governorate": governorate}
+    if age is not None:
+        out["age"] = age
+    return out
+
+
+def _confidence(
+    result: dict,
+    pass1_fields: set[str],
+    zone_fields: set[str],
+) -> dict[str, str]:
+    """
+    Assign per-field confidence.
+    high   — Pass 1 extracted it AND (if NID) checksum passes
+    medium — zone/recovery pass extracted it
+    low    — NID has 14 digits but failed checksum
+    null   — field not extracted
+    """
+    conf: dict[str, str] = {}
+    for key in _FIELD_KEYS:
+        val = result.get(key)
+        if not val:
+            conf[key] = "null"
+        elif key in pass1_fields:
+            if key == "الرقم القومي":
+                la = val.translate(_AR2LA)
+                conf[key] = "high" if _nid_checksum_ok(la) else "medium"
+            else:
+                conf[key] = "high"
+        elif key in zone_fields:
+            if key == "الرقم القومي":
+                la = val.translate(_AR2LA)
+                conf[key] = "medium" if _nid_checksum_ok(la) else "low"
+            else:
+                conf[key] = "medium"
+        else:
+            conf[key] = "low"
+    return conf
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Public API
 # ══════════════════════════════════════════════════════════════════════════════
 
-def llm_extract(image_path: str) -> dict | None:
+def llm_extract(image_path: str, _meta: dict | None = None) -> dict | None:
     """
-    Multi-pass NID extraction pipeline.
+    Multi-pass NID extraction pipeline with parallel execution.
 
-    Pass 1   — full card image → all 6 fields at once
-    Pass 1b  — enhanced preprocessing retry when fewer than 3 fields found
-    Pass 2   — NID strip zoom (binary → color → top-hat) when NID still missing
-    Pass 3   — full-card NID-focused prompt when strip zooms all fail
-    Pass 4   — dedicated date-zone crop when date still missing
-    Cross-val — NID date part verified against independently-extracted date
+    Pass 1 + date-zone + NID-strip run in parallel (Layer 4).
+    Perspective correction applied first if a card quad is detected (Layer 1).
+
+    If _meta dict is provided it is populated with:
+      method_detail  — which passes fired (e.g. "pass1+nid_strip")
+      deskewed       — True if perspective correction was applied
+      confidence     — per-field level: high / medium / low / null  (Layer 6)
+      derived_fields — gender / governorate / age from NID           (Layer 7)
 
     Returns dict with _FIELD_KEYS, or None if no LLM key is configured.
     """
     if not has_llm_key():
         return None
 
-    # ── Pass 1: full card → all fields ───────────────────────────────────────
-    result = _pass1_all_fields(image_path)
-    if result is None:
-        logger.warning("llm_extract: Pass1 returned nothing")
-        return None
+    # ── Layer 1: Perspective correction ──────────────────────────────────────
+    deskewed    = False
+    deskew_path = image_path
+    try:
+        deskew_path = _auto_deskew(image_path)
+        deskewed    = deskew_path != image_path
+    except Exception as exc:
+        logger.warning("Deskew failed: %s — using original", exc)
+        deskew_path = image_path
 
-    # ── Pass 1b: enhanced retry when confidence is low ────────────────────────
-    extracted_p1 = sum(1 for v in result.values() if v)
-    if extracted_p1 < 3:
-        logger.info("Low extraction (%d/6) — retrying with enhanced preprocessing …", extracted_p1)
-        result2 = _pass1_all_fields(image_path, enhanced=True)
-        if result2:
-            before = sum(1 for v in result.values() if v)
-            for key in _FIELD_KEYS:
-                if not result.get(key) and result2.get(key):
-                    result[key] = result2[key]
-            logger.info("Enhanced retry filled in %d additional fields",
-                        sum(1 for v in result.values() if v) - before)
+    method_parts:  list[str]  = []
+    pass1_fields:  set[str]   = set()
+    zone_fields:   set[str]   = set()
 
-    # ── Pass 4 (early): recover date via dedicated zone crop ─────────────────
-    # Run this BEFORE NID recovery so we can cross-validate the NID against the date.
-    if not result.get("تاريخ الميلاد"):
-        logger.info("Date missing — running dedicated date-zone extraction …")
-        date_from_zone = _pass_date_only(image_path)
-        if date_from_zone:
+    # Use true parallelism only when Gemini is available (high quota).
+    # Groq free tier (30K TPM) can't handle 3 simultaneous vision calls —
+    # stagger submissions by 3 s so token windows don't collide.
+    _groq_only = bool(os.environ.get("GROQ_API_KEY")) and not os.environ.get("GOOGLE_API_KEY")
+
+    try:
+        # ── Layer 4: Parallel Pass 1 + date zone + NID strip ─────────────────
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            f_full = ex.submit(_pass1_all_fields, deskew_path)
+            if _groq_only:
+                time.sleep(3)   # stagger to avoid simultaneous TPM hits
+            f_date = ex.submit(_pass_date_only,   deskew_path)
+            if _groq_only:
+                time.sleep(3)
+            f_nid  = ex.submit(_pass2_nid_only,   deskew_path, None)
+
+            r_full         = f_full.result()
+            date_from_zone = f_date.result()
+            nid_from_strip = f_nid.result()
+
+        # ── Pass 1 result ─────────────────────────────────────────────────────
+        if r_full is None:
+            logger.warning("llm_extract: Pass1 returned nothing — trying enhanced")
+            r_full = _pass1_all_fields(deskew_path, enhanced=True)
+            if r_full is None:
+                return None
+            method_parts.append("pass1b")
+        else:
+            method_parts.append("pass1")
+
+        result       = r_full
+        pass1_fields = {k for k, v in result.items() if v}
+        extracted_p1 = len(pass1_fields)
+
+        # ── Pass 1b: enhanced retry when yield is low ─────────────────────────
+        if extracted_p1 < 3:
+            logger.info("Low extraction (%d/6) — retrying with enhanced preprocessing …",
+                        extracted_p1)
+            result2 = _pass1_all_fields(deskew_path, enhanced=True)
+            if result2:
+                before = extracted_p1
+                for key in _FIELD_KEYS:
+                    if not result.get(key) and result2.get(key):
+                        result[key] = result2[key]
+                        pass1_fields.add(key)
+                added = sum(1 for v in result.values() if v) - before
+                logger.info("Enhanced retry filled in %d additional fields", added)
+                if "pass1b" not in method_parts:
+                    method_parts.append("pass1b")
+
+        # ── Merge date from zone pass ─────────────────────────────────────────
+        if date_from_zone and not result.get("تاريخ الميلاد"):
             result["تاريخ الميلاد"] = date_from_zone
+            zone_fields.add("تاريخ الميلاد")
+            method_parts.append("date_zone")
 
-    known_date = result.get("تاريخ الميلاد")
+        known_date = result.get("تاريخ الميلاد")
 
-    # ── Cross-validate existing NID against date ──────────────────────────────
-    nid_ar = result.get("الرقم القومي")
-    if nid_ar and known_date:
-        nid_la = nid_ar.translate(_AR2LA)
-        # Clear if: date part of NID doesn't match extracted date,
-        # OR NID is fully structurally invalid (month/day out of range).
-        # This ensures recovery passes run with the date-prefix hint.
-        date_mismatch = len(nid_la) == 14 and not _nid_matches_date(nid_la, known_date)
-        structurally_bad = not _validate_nid(nid_la)
-        if date_mismatch or structurally_bad:
-            logger.warning(
-                "NID %s cleared (structurally_bad=%s date_mismatch=%s) — triggering recovery",
-                nid_la, structurally_bad, date_mismatch)
-            result["الرقم القومي"] = None
-            nid_ar = None
+        # ── Cross-validate existing NID against date ──────────────────────────
+        nid_ar = result.get("الرقم القومي")
+        if nid_ar and known_date:
+            nid_la           = nid_ar.translate(_AR2LA)
+            date_mismatch    = len(nid_la) == 14 and not _nid_matches_date(nid_la, known_date)
+            structurally_bad = not _validate_nid(nid_la)
+            if date_mismatch or structurally_bad:
+                logger.warning(
+                    "NID %s cleared (structurally_bad=%s date_mismatch=%s) — triggering recovery",
+                    nid_la, structurally_bad, date_mismatch)
+                result["الرقم القومي"] = None
+                pass1_fields.discard("الرقم القومي")
+                nid_ar = None
 
-    # ── Pass 2 + 3: NID recovery ─────────────────────────────────────────────
-    if not result.get("الرقم القومي"):
-        logger.info("NID missing — running Pass2 (NID strip zoom: binary/color/tophat) …")
-        nid_ar = _pass2_nid_only(image_path, known_date=known_date)
+        # ── Adopt parallel NID strip result (with date cross-check) ──────────
+        if not result.get("الرقم القومي") and nid_from_strip:
+            la_strip = nid_from_strip.translate(_AR2LA)
+            if not known_date or _nid_matches_date(la_strip, known_date):
+                result["الرقم القومي"] = nid_from_strip
+                zone_fields.add("الرقم القومي")
+                method_parts.append("nid_strip")
+                logger.info("Parallel NID strip accepted: %s", nid_from_strip)
+            else:
+                logger.info("Parallel NID strip fails date check — will re-run with hint")
+                nid_from_strip = None
 
-        # Pass 3: full-card NID-focused prompt as last resort
-        if not nid_ar:
-            logger.info("Pass2 failed — running Pass3 (full-card NID focus) …")
+        # ── Pass 2 + 3: NID recovery with date hint ───────────────────────────
+        if not result.get("الرقم القومي"):
+            logger.info("NID missing — running NID recovery with date hint …")
+            nid_ar = _pass2_nid_only(deskew_path, known_date=known_date)
+
+            if not nid_ar:
+                logger.info("Pass2 failed — running Pass3 (full-card NID focus) …")
+                try:
+                    full_jpeg = _prep_full_card(deskew_path)
+                    raw3      = _ask_nid(full_jpeg, _NID_FULLCARD_PROMPT)
+                    if raw3:
+                        digits_ar = _parse_nid_digits(raw3)
+                        if digits_ar:
+                            la3 = digits_ar.translate(_AR2LA)
+                            if known_date and not _nid_matches_date(la3, known_date):
+                                logger.info("Pass3 NID fails date check — discarding")
+                            else:
+                                nid_ar = digits_ar
+                                logger.info("Pass3 NID extracted: %s", digits_ar)
+                except Exception as exc:
+                    logger.warning("Pass3 error: %s", exc)
+
+            if nid_ar:
+                result["الرقم القومي"] = nid_ar
+                zone_fields.add("الرقم القومي")
+                method_parts.append("nid_recovery")
+                if not result.get("تاريخ الميلاد"):
+                    nid_la = nid_ar.translate(_AR2LA)
+                    if _validate_nid(nid_la):
+                        century = "19" if nid_la[0] == "2" else "20"
+                        y  = century + nid_la[1:3]
+                        mo = nid_la[3:5]
+                        d  = nid_la[5:7]
+                        result["تاريخ الميلاد"] = _normalise_date(f"{y}/{mo}/{d}")
+                        zone_fields.add("تاريخ الميلاد")
+                        logger.info("Date derived from recovered NID")
+
+        # ── Address recovery ──────────────────────────────────────────────────
+        if not result.get("العنوان بالكامل"):
+            logger.info("Address missing — running dedicated address-zone extraction …")
+            addr = _pass_address_only(deskew_path)
+            if addr:
+                result["العنوان بالكامل"] = addr
+                zone_fields.add("العنوان بالكامل")
+                method_parts.append("addr_zone")
+
+        extracted = sum(1 for v in result.values() if v)
+        logger.info("llm_extract final: %d/6 fields  method=%s  deskewed=%s",
+                    extracted, "+".join(method_parts), deskewed)
+
+        # ── Populate caller-supplied meta dict ────────────────────────────────
+        if _meta is not None:
+            _meta["method_detail"] = "+".join(method_parts) if method_parts else "pass1"
+            _meta["deskewed"]      = deskewed
+            _meta["confidence"]    = _confidence(result, pass1_fields, zone_fields)
+            nid_val  = result.get("الرقم القومي") or ""
+            nid_la_f = nid_val.translate(_AR2LA)
+            _meta["derived_fields"] = _derive_from_nid_full(nid_la_f)
+
+        return result
+
+    finally:
+        if deskewed and deskew_path != image_path:
             try:
-                full_jpeg = _prep_full_card(image_path)
-                raw3 = _ask_nid(full_jpeg, _NID_FULLCARD_PROMPT)
-                if raw3:
-                    digits_ar = _parse_nid_digits(raw3)
-                    # Accept pass 3 result only if it passes cross-validation
-                    if digits_ar:
-                        la3 = digits_ar.translate(_AR2LA)
-                        if known_date and not _nid_matches_date(la3, known_date):
-                            logger.info("Pass3 NID fails date check — discarding")
-                        else:
-                            nid_ar = digits_ar
-                            logger.info("Pass3 NID extracted: %s", digits_ar)
-            except Exception as exc:
-                logger.warning("Pass3 error: %s", exc)
-
-        if nid_ar:
-            result["الرقم القومي"] = nid_ar
-            # Derive date from NID if date-zone pass also failed
-            if not result.get("تاريخ الميلاد"):
-                nid_la = nid_ar.translate(_AR2LA)
-                if _validate_nid(nid_la):
-                    century = "19" if nid_la[0] == "2" else "20"
-                    y  = century + nid_la[1:3]
-                    mo = nid_la[3:5]
-                    d  = nid_la[5:7]
-                    result["تاريخ الميلاد"] = _normalise_date(f"{y}/{mo}/{d}")
-                    logger.info("Date derived from recovered NID")
-
-    # ── Address recovery: dedicated zone crop if still missing ──────────────────
-    if not result.get("العنوان بالكامل"):
-        logger.info("Address missing — running dedicated address-zone extraction …")
-        addr = _pass_address_only(image_path)
-        if addr:
-            result["العنوان بالكامل"] = addr
-
-    extracted = sum(1 for v in result.values() if v)
-    logger.info("llm_extract final: %d/6 fields", extracted)
-    return result
+                os.unlink(deskew_path)
+            except OSError:
+                pass
 
 
 def has_llm_key() -> bool:

@@ -41,7 +41,7 @@ const projectSchema = new mongoose.Schema({
     },
     completionDate: {
         type: Date,
-        required: [true, 'Completion date is required']
+        default: null
     },
     description: {
         type: String,
@@ -52,6 +52,19 @@ const projectSchema = new mongoose.Schema({
         type: String,
         trim: true,
         default: null
+    },
+    images: {
+        type: [String],
+        default: []
+    },
+    propertyTypes: {
+        type: [
+            {
+                category: { type: String, required: true },
+                units:    { type: [String], default: [] }
+            }
+        ],
+        default: []
     }
 }, {
     timestamps: true

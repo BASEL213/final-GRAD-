@@ -14,24 +14,32 @@ const userSchema = new mongoose.Schema({
         unique: true,
         trim: true,
         lowercase: true,
-        match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+        match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email']
     },
     password: {
         type: String,
-        required: [true, 'Password is required'],
         minlength: [6, 'Password must be at least 6 characters long'],
         select: false // Don't include password in queries by default
     },
+    googleId: {
+        type: String,
+        unique: true,
+        sparse: true,
+        select: false
+    },
+    isGoogleUser: {
+        type: Boolean,
+        default: false
+    },
     phone: {
         type: String,
-        required: [true, 'Phone number is required'],
         trim: true,
         match: [/^01[0-9]{9}$/, 'Phone number must start with 01 and be 11 digits']
     },
     nationalId: {
         type: String,
-        required: [true, 'National ID is required'],
         unique: true,
+        sparse: true,   // allows multiple null values for Google-only users
         trim: true,
         match: [/^[0-9]{14}$/, 'National ID must be exactly 14 digits']
     },
@@ -124,6 +132,7 @@ userSchema.pre('save', async function(next) {
 
 // Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
+    if (!this.password) return false; // Google-only users have no password
     return await bcrypt.compare(candidatePassword, this.password);
 };
 

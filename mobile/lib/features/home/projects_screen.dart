@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'dart:developer' as developer;
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:findoor_app2/core/page_tracker.dart';
 import 'property_details_screen.dart';
 
@@ -20,7 +23,10 @@ class _ProjectsPageState extends State<ProjectsPage>
   static const Color primaryBlue = Color(0xFF1E88E5);
   static const Color darkText = Color(0xFF263238);
 
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 10),
+  ));
   List _projects = [];
   bool _isLoading = true;
   String _errorMessage = '';
@@ -40,6 +46,7 @@ class _ProjectsPageState extends State<ProjectsPage>
       });
       final response = await _dio.get(
         '${ApiConfig.nodeApi}/projects',
+        queryParameters: {'limit': 100},
         options: await ApiConfig.authOptions,
       );
       if (response.statusCode == 200) {
@@ -53,8 +60,7 @@ class _ProjectsPageState extends State<ProjectsPage>
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage =
-            'Connection error. Make sure your laptop and phone are on the same Wi-Fi.';
+        _errorMessage = S.current.connectionNetworkError;
       });
       developer.log('Error fetching projects', error: e);
     }
@@ -76,6 +82,7 @@ class _ProjectsPageState extends State<ProjectsPage>
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -86,16 +93,17 @@ class _ProjectsPageState extends State<ProjectsPage>
           icon: const Icon(Icons.arrow_back_ios_new, color: darkText, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Major Projects',
-          style: TextStyle(
+        title: Text(
+          s.majorProjects,
+          style: const TextStyle(
               color: darkText, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         actions: [
+          const LangToggleButton(),
           IconButton(
             onPressed: _fetchProjects,
             icon: const Icon(Icons.refresh, color: primaryBlue),
-            tooltip: 'Refresh',
+            tooltip: s.refresh,
           ),
         ],
       ),
@@ -107,9 +115,8 @@ class _ProjectsPageState extends State<ProjectsPage>
             child: TextField(
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
-                hintText: 'Search projects…',
-                hintStyle:
-                    TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                hintText: s.searchProjects,
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
                 prefixIcon:
                     Icon(Icons.search, color: Colors.grey.shade400, size: 20),
                 filled: true,
@@ -158,8 +165,8 @@ class _ProjectsPageState extends State<ProjectsPage>
                                             BorderRadius.circular(12))),
                                 icon: const Icon(Icons.refresh,
                                     color: Colors.white, size: 18),
-                                label: const Text('Retry',
-                                    style: TextStyle(color: Colors.white)),
+                                label: Text(s.retry,
+                                    style: const TextStyle(color: Colors.white)),
                               ),
                             ],
                           ),
@@ -173,23 +180,31 @@ class _ProjectsPageState extends State<ProjectsPage>
                                 Icon(Icons.search_off,
                                     size: 56, color: Colors.grey.shade300),
                                 const SizedBox(height: 12),
-                                Text('No projects match "$_search"',
-                                    style: TextStyle(
-                                        color: Colors.grey.shade500,
-                                        fontSize: 14)),
+                                Text(
+                                  _search.isEmpty
+                                      ? s.noProjectsAvailable
+                                      : s.noProjectsMatch(_search),
+                                  style: TextStyle(
+                                      color: Colors.grey.shade500,
+                                      fontSize: 14),
+                                ),
                               ],
                             ),
                           )
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-                            itemCount: _filtered.length,
-                            itemBuilder: (context, index) {
-                              final project = _filtered[index];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
-                                child: _ProjectCard(project: project),
-                              );
-                            },
+                        : RefreshIndicator(
+                            color: primaryBlue,
+                            onRefresh: _fetchProjects,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                              itemCount: _filtered.length,
+                              itemBuilder: (context, index) {
+                                final project = _filtered[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 20),
+                                  child: _ProjectCard(project: project),
+                                );
+                              },
+                            ),
                           ),
           ),
         ],
@@ -212,6 +227,8 @@ class _ProjectCardState extends State<_ProjectCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
+  Timer? _imgTimer;
+  int _imgIndex = 0;
 
   @override
   void initState() {
@@ -225,11 +242,36 @@ class _ProjectCardState extends State<_ProjectCard>
     _scale = Tween<double>(begin: 1.0, end: 0.96).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
     );
+    _startTimer();
+  }
+
+  List<String> get _images {
+    final p = widget.project;
+    final raw = p['images'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw
+          .map((e) => ApiConfig.fixImageUrl(e.toString()))
+          .where((u) => u.isNotEmpty)
+          .toList();
+    }
+    final single = ApiConfig.fixImageUrl(
+        (p['imageUrl'] ?? p['image'] ?? '').toString());
+    return single.isNotEmpty ? [single] : [];
+  }
+
+  void _startTimer() {
+    if (_images.length > 1) {
+      _imgTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+        if (!mounted) return;
+        setState(() => _imgIndex = (_imgIndex + 1) % _images.length);
+      });
+    }
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _imgTimer?.cancel();
     super.dispose();
   }
 
@@ -252,6 +294,8 @@ class _ProjectCardState extends State<_ProjectCard>
   @override
   Widget build(BuildContext context) {
     final p = widget.project;
+    final s = S.of(context);
+    final images = _images;
 
     String location = '';
     if (p['location'] is String) {
@@ -265,22 +309,37 @@ class _ProjectCardState extends State<_ProjectCard>
     final String price = (p['priceRange'] ?? 'N/A').toString();
     final String status = (p['status'] ?? 'active').toString();
     final bool soldOut = available == 0 && total > 0;
-    final String imageUrl = (p['imageUrl'] ?? p['image'] ?? '').toString();
 
     final String unitsLabel = soldOut
-        ? 'Sold Out'
-        : (total > 0 ? '$available / $total Units' : '$available Units Left');
+        ? s.soldOut
+        : (total > 0
+            ? s.unitsOfTotal(available, total)
+            : s.unitsLeft(available));
 
+    String badgeText;
     Color badgeColor;
     switch (status) {
-      case 'active':    badgeColor = Colors.green;  break;
-      case 'planning':  badgeColor = Colors.orange; break;
-      case 'completed': badgeColor = Colors.blue;   break;
-      default:          badgeColor = Colors.grey;
+      case 'active':
+        badgeText = s.statusActive;
+        badgeColor = Colors.green;
+        break;
+      case 'planning':
+        badgeText = s.statusPlanning;
+        badgeColor = Colors.orange;
+        break;
+      case 'completed':
+        badgeText = s.statusCompleted;
+        badgeColor = Colors.blue;
+        break;
+      default:
+        badgeText = status.toUpperCase();
+        badgeColor = Colors.grey;
     }
 
-    final badgeText = soldOut ? 'SOLD OUT' : status.toUpperCase();
-    final effectiveBadgeColor = soldOut ? Colors.red : badgeColor;
+    if (soldOut) {
+      badgeText = s.soldOut.toUpperCase();
+      badgeColor = Colors.red;
+    }
 
     return GestureDetector(
       onTap: () => _openDetails(context),
@@ -308,35 +367,72 @@ class _ProjectCardState extends State<_ProjectCard>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // background image
-                imageUrl.isNotEmpty
-                    ? Image.network(imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            Container(color: Colors.grey.shade200))
-                    : Container(color: Colors.grey.shade200),
+                // ── crossfade background image ──────────────────
+                images.isEmpty
+                    ? Container(color: Colors.grey.shade200)
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 900),
+                        transitionBuilder: (child, anim) =>
+                            FadeTransition(opacity: anim, child: child),
+                        child: CachedNetworkImage(
+                          imageUrl: images[_imgIndex],
+                          key: ValueKey('${p['_id'] ?? ''}_$_imgIndex'),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          placeholder: (_, __) => Container(color: Colors.grey.shade200),
+                          errorWidget: (_, __, ___) => Container(color: Colors.grey.shade200),
+                        ),
+                      ),
 
-                // gradient overlay
+                // ── gradient overlay ───────────────────────────
                 DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withValues(alpha: 0.85),
+                        Colors.black.withValues(alpha: 0.88),
                         Colors.transparent,
                       ],
+                      stops: const [0.0, 0.55],
                     ),
                   ),
                 ),
 
-                // content
+                // ── content ────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // dot indicators above the text
+                      if (images.length > 1) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(
+                            images.length,
+                            (i) => AnimatedContainer(
+                              duration: const Duration(milliseconds: 350),
+                              curve: Curves.easeOut,
+                              margin:
+                                  const EdgeInsets.symmetric(horizontal: 3),
+                              width: _imgIndex == i ? 22 : 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: _imgIndex == i
+                                    ? Colors.white
+                                    : Colors.white30,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // badge + price
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -344,7 +440,7 @@ class _ProjectCardState extends State<_ProjectCard>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: effectiveBadgeColor,
+                              color: badgeColor,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(badgeText,
@@ -361,6 +457,8 @@ class _ProjectCardState extends State<_ProjectCard>
                         ],
                       ),
                       const SizedBox(height: 10),
+
+                      // project name
                       Text(
                         (p['name'] ?? 'Project').toString(),
                         style: const TextStyle(
@@ -369,6 +467,8 @@ class _ProjectCardState extends State<_ProjectCard>
                             fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 5),
+
+                      // location + units
                       Row(
                         children: [
                           const Icon(Icons.location_on,
@@ -390,7 +490,8 @@ class _ProjectCardState extends State<_ProjectCard>
                         ],
                       ),
                       const SizedBox(height: 10),
-                      // "View Details" hint
+
+                      // view details button
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -404,16 +505,16 @@ class _ProjectCardState extends State<_ProjectCard>
                                   color: Colors.white.withValues(alpha: 0.3),
                                   width: 1),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text('View Details',
-                                    style: TextStyle(
+                                Text(s.viewDetails,
+                                    style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600)),
-                                SizedBox(width: 4),
-                                Icon(Icons.arrow_forward_ios,
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_forward_ios,
                                     color: Colors.white, size: 10),
                               ],
                             ),

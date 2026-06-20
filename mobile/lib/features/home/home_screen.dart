@@ -1,7 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:findoor_app2/core/page_tracker.dart';
 import 'application_page.dart';
 import 'profile_screen.dart';
@@ -29,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
   String _userName = '';
   List<Map<String, dynamic>> _featuredProjects = [];
   bool _loadingFeatured = false;
+  bool _errorFeatured = false;
 
   @override
   void initState() {
@@ -47,9 +50,12 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
   }
 
   Future<void> _fetchFeaturedProjects() async {
-    setState(() => _loadingFeatured = true);
+    setState(() { _loadingFeatured = true; _errorFeatured = false; });
     try {
-      final res = await Dio().get('${ApiConfig.nodeApi}/projects',
+      final res = await Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      )).get('${ApiConfig.nodeApi}/projects',
           queryParameters: {'limit': 5},
           options: await ApiConfig.authOptions);
       final list = res.data is List
@@ -63,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
         });
       }
     } catch (_) {
-      // keep empty — carousel shows placeholder
+      if (mounted) setState(() => _errorFeatured = true);
     } finally {
       if (mounted) setState(() => _loadingFeatured = false);
     }
@@ -75,9 +81,9 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return Scaffold(
       backgroundColor: premiumBackground,
-      // --- ADDED AI RECOMMENDATION ICON HERE ---
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 90), // Offset to stay above the floating nav bar
         child: FloatingActionButton(
@@ -117,11 +123,11 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
                 const SizedBox(height: 24),
                 _buildQuickServices(),
                 const SizedBox(height: 32),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Text(
-                    "Featured Properties",
-                    style: TextStyle(
+                    s.featuredProperties,
+                    style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: darkText,
@@ -150,32 +156,38 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_userName.isNotEmpty ? 'Hi $_userName' : 'Hi there', style: const TextStyle(color: Colors.grey, fontSize: 16)),
-              const Text("Good Morning,",
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: darkText, letterSpacing: -0.5)),
+              Text(_userName.isNotEmpty ? S.current.hi(_userName) : S.current.hiThere, style: const TextStyle(color: Colors.grey, fontSize: 16)),
+              Text(S.current.goodMorning,
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: darkText, letterSpacing: -0.5)),
             ],
           ),
-          GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilePage())),
-            child: Tooltip(
-              message: "View Profile",
-              child: Stack(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: primaryBlue.withValues(alpha: 0.2), width: 2),
-                    ),
-                    child: const CircleAvatar(
-                      radius: 25,
-                      backgroundColor: primaryBlue,
-                      child: Icon(Icons.person, color: Colors.white, size: 30),
-                    ),
+          Row(
+            children: [
+              const LangToggleButton(),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilePage())),
+                child: Tooltip(
+                  message: S.current.viewProfile,
+                  child: Stack(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: primaryBlue.withValues(alpha: 0.2), width: 2),
+                        ),
+                        child: const CircleAvatar(
+                          radius: 25,
+                          backgroundColor: primaryBlue,
+                          child: Icon(Icons.person, color: Colors.white, size: 30),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          )
+            ],
+          ),
         ],
       ),
     );
@@ -190,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
             children: [
               Expanded(
                 child: Tooltip(
-                  message: "Start a new housing application",
+                  message: S.current.startApplicationTooltip,
                   child: InkWell(
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const ApplicationPage()))
@@ -207,14 +219,14 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
                           BoxShadow(color: primaryBlue.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 5)),
                         ],
                       ),
-                      child: const Column(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Icon(Icons.add_home_work_outlined, color: Colors.white, size: 40),
-                          Spacer(),
-                          Text("Apply Now", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                          Text("Start New Application", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          const Icon(Icons.add_home_work_outlined, color: Colors.white, size: 40),
+                          const Spacer(),
+                          Text(S.current.applyNow, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                          Text(S.current.startNewApplication, style: const TextStyle(color: Colors.white70, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -225,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
               Expanded(
                 child: Column(
                   children: [
-                    _buildSmallStatusCard("My Status", Icons.auto_graph, Colors.orange, "Track your application status", () async {
+                    _buildSmallStatusCard(S.current.myStatus, Icons.auto_graph, Colors.orange, S.current.trackStatus, () async {
                       final prefs = await SharedPreferences.getInstance();
                       String code = prefs.getString('tracking_code') ?? '';
 
@@ -258,14 +270,14 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
                       if (!mounted) return;
                       if (code.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('No application found for your account.'), behavior: SnackBarBehavior.floating),
+                          SnackBar(content: Text(S.current.noApplicationFound), behavior: SnackBarBehavior.floating),
                         );
                         return;
                       }
                       Navigator.push(context, MaterialPageRoute(builder: (_) => StatusPage(trackingCode: code)));
                     }),
                     const SizedBox(height: 16),
-                    _buildSmallStatusCard("E-Wallet", Icons.account_balance_wallet, Colors.green, "View balance and payments", () {
+                    _buildSmallStatusCard(S.current.eWallet, Icons.account_balance_wallet, Colors.green, S.current.viewBalance, () {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletPage()));
                     }),
                   ],
@@ -294,12 +306,12 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
                     child: Icon(Icons.folder_outlined, color: Colors.indigo.shade600, size: 24),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("My Documents", style: TextStyle(fontWeight: FontWeight.bold, color: darkText, fontSize: 15)),
-                        Text("View and manage uploaded files", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text(S.current.myDocuments, style: const TextStyle(fontWeight: FontWeight.bold, color: darkText, fontSize: 15)),
+                        Text(S.current.viewManageFiles, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -348,6 +360,30 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
         child: Center(child: CircularProgressIndicator(color: primaryBlue)),
       );
     }
+    if (_errorFeatured) {
+      return SizedBox(
+        height: 200,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.wifi_off, size: 48, color: Colors.grey.shade300),
+              const SizedBox(height: 12),
+              Text(S.current.connectionNetworkError,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: _fetchFeaturedProjects,
+                icon: const Icon(Icons.refresh, size: 16, color: primaryBlue),
+                label: Text(S.current.retry,
+                    style: const TextStyle(color: primaryBlue, fontSize: 13)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_featuredProjects.isEmpty) {
       return SizedBox(
         height: 200,
@@ -357,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
             children: [
               Icon(Icons.apartment_outlined, size: 48, color: Colors.grey.shade300),
               const SizedBox(height: 12),
-              Text('No projects available',
+              Text(S.current.noProjectsAvailable,
                   style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
             ],
           ),
@@ -376,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
               ? ((p['location'] as Map)['city'] ?? '').toString()
               : (p['location'] ?? p['governorate'] ?? 'Egypt').toString();
           final price = (p['priceRange'] ?? (p['price'] != null ? 'EGP ${p['price']}' : 'On request')).toString();
-          final imageUrl = (p['imageUrl'] ?? p['image'] ?? '').toString();
+          final imageUrl = ApiConfig.fixImageUrl((p['imageUrl'] ?? p['image'] ?? '').toString());
           return InkWell(
             onTap: () => Navigator.push(
               context,
@@ -405,11 +441,13 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
                     Stack(
                       children: [
                         imageUrl.isNotEmpty
-                            ? Image.network(imageUrl,
+                            ? CachedNetworkImage(
+                                imageUrl: imageUrl,
                                 height: 220,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => _projectImagePlaceholder())
+                                placeholder: (_, __) => _projectImagePlaceholder(),
+                                errorWidget: (_, __, ___) => _projectImagePlaceholder())
                             : _projectImagePlaceholder(),
                         Positioned(
                           top: 16,
@@ -420,8 +458,8 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
                             decoration: BoxDecoration(
                                 color: primaryBlue,
                                 borderRadius: BorderRadius.circular(20)),
-                            child: const Text('SOCIAL HOUSING',
-                                style: TextStyle(
+                            child: Text(S.current.socialHousing,
+                                style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,
@@ -462,7 +500,7 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
                               const SizedBox(width: 8),
                               if ((p['availableUnits'] as int? ?? 0) > 0)
                                 _buildPropertyDetailChip(
-                                    '${p['availableUnits']} units left'),
+                                    S.current.unitsLeft(p['availableUnits'] as int)),
                             ],
                           ),
                         ],
@@ -511,14 +549,14 @@ class _HomeScreenState extends State<HomeScreen> with PageTracker<HomeScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _navIcon(Icons.grid_view, "Home", true, () {}),
-            _navIcon(Icons.business, "Projects", false, () {
+            _navIcon(Icons.grid_view, S.current.homeTab, true, () {}),
+            _navIcon(Icons.business, S.current.projectsTab, false, () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const ProjectsPage()));
             }),
-            _navIcon(Icons.search, "Search", false, () {
+            _navIcon(Icons.search, S.current.searchTab, false, () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const SearchPage()));
             }),
-            _navIcon(Icons.person_outline, "Profile", false, () {
+            _navIcon(Icons.person_outline, S.current.profileTab, false, () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilePage()));
             }),
           ],

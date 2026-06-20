@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'findoor_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET || 'findoor_jwt_secret_2024_housing_system';
 
 /**
  * Optional auth middleware — decodes the Bearer token if present and attaches

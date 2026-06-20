@@ -2,11 +2,13 @@ const User = require('../models/User');
 const { validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const https = require('https');
 const auditService = require('../utils/auditService');
+const { sendOtpEmail } = require('../utils/emailService');
 
-// Generate JWT Token
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET || 'fallback-secret-key', {
+// Generate JWT Token — always include role so middleware can authorise without a DB lookup
+const generateToken = (id, role = 'citizen') => {
+    return jwt.sign({ id, role }, process.env.JWT_SECRET || 'findoor_jwt_secret_2024_housing_system', {
         expiresIn: process.env.JWT_EXPIRE || '30d'
     });
 };
@@ -53,7 +55,7 @@ exports.register = async (req, res) => {
         });
 
         // Generate token
-        const token = generateToken(user._id);
+        const token = generateToken(user._id, user.role);
 
         res.status(201).json({
             success: true,
@@ -118,7 +120,7 @@ exports.login = async (req, res) => {
             await auditService.logLogin(user, req, true);
 
             // Generate token
-            const token = generateToken(user._id);
+            const token = generateToken(user._id, user.role);
 
             res.status(200).json({
                 success: true,
@@ -139,67 +141,10 @@ exports.login = async (req, res) => {
                 }
             });
         } catch (dbError) {
-            console.log('Database connection failed, using fallback login:', dbError.message);
-            
-            // Fallback login for demo purposes
-            const fallbackUsers = [
-                {
-                    id: 'admin-fallback',
-                    name: 'Admin User',
-                    email: 'admin@gov.eg',
-                    password: 'admin123',
-                    phone: '01234567890',
-                    nationalId: '12345678901234',
-                    role: 'admin',
-                    isVerified: true,
-                    profile: {
-                        address: 'Cairo, Egypt',
-                        occupation: 'System Administrator',
-                        familySize: 4
-                    },
-                    createdAt: new Date().toISOString()
-                },
-                {
-                    id: 'citizen-fallback',
-                    name: 'Citizen User',
-                    email: 'citizen@example.com',
-                    password: '123456',
-                    phone: '01234567891',
-                    nationalId: '12345678901235',
-                    role: 'citizen',
-                    isVerified: true,
-                    profile: {
-                        address: 'Alexandria, Egypt',
-                        occupation: 'Engineer',
-                        familySize: 3
-                    },
-                    createdAt: new Date().toISOString()
-                }
-            ];
-
-            const fallbackUser = fallbackUsers.find(user => 
-                user.email === email && user.password === password
-            );
-
-            if (!fallbackUser) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Invalid email or password'
-                });
-            }
-
-            // Generate token
-            const token = generateToken(fallbackUser.id);
-
-            const { password: _, ...userWithoutPassword } = fallbackUser;
-
-            res.status(200).json({
-                success: true,
-                message: 'Login successful (fallback mode)',
-                data: {
-                    user: userWithoutPassword,
-                    token
-                }
+            console.error('Database connection failed:', dbError.message);
+            return res.status(503).json({
+                success: false,
+                message: 'Service temporarily unavailable. Please try again later.'
             });
         }
     } catch (error) {
@@ -311,122 +256,186 @@ exports.updateProfile = async (req, res) => {
     }
 };
 
-// @desc    Forgot password
+// @desc    Forgot password — sends 6-digit OTP to email
 // @route   POST /api/auth/forgot-password
 // @access  Public
 exports.forgotPassword = async (req, res) => {
     try {
-        // Check for validation errors
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Validation failed',
-                errors: errors.array()
-            });
+            return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array() });
         }
 
         const { email } = req.body;
-
         const user = await User.findOne({ email });
 
+        // Always return success to prevent email enumeration
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'No user found with this email'
-            });
+            return res.status(200).json({ success: true, message: 'If that email is registered, an OTP has been sent.' });
         }
 
-        // Generate reset token
-        const resetToken = user.createPasswordResetToken();
+        // Generate 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        user.passwordResetToken = crypto.createHash('sha256').update(otp).digest('hex');
+        user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save({ validateBeforeSave: false });
 
-        // In production, you would send an email here
-        // For demo purposes, we'll return the token
-        console.log('Password reset token:', resetToken);
+        try {
+            await sendOtpEmail(email, otp);
+        } catch (emailErr) {
+            user.passwordResetToken = undefined;
+            user.passwordResetExpires = undefined;
+            await user.save({ validateBeforeSave: false });
+            console.error('Email send failed:', emailErr.message);
+            return res.status(500).json({ success: false, message: 'Failed to send OTP email. Check server email configuration.' });
+        }
 
-        res.status(200).json({
-            success: true,
-            message: 'Password reset token generated. Check console for token (in production, this would be emailed).',
-            // In production, remove this token from response
-            data: {
-                resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined
-            }
-        });
+        res.status(200).json({ success: true, message: 'OTP sent to your email address.' });
     } catch (error) {
         console.error('Forgot password error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while processing forgot password',
-            error: process.env.NODE_ENV === 'development' ? error.message : 'Failed to process request'
-        });
+        res.status(500).json({ success: false, message: 'Server error while processing forgot password' });
     }
 };
 
-// @desc    Reset password
+// @desc    Reset password using OTP (email + otp + new password)
 // @route   POST /api/auth/reset-password
 // @access  Public
 exports.resetPassword = async (req, res) => {
     try {
-        // Check for validation errors
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Validation failed',
-                errors: errors.array()
-            });
+        const { email, otp, password } = req.body;
+
+        if (!email || !otp || !password) {
+            return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required.' });
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
         }
 
-        const { token, password } = req.body;
-
-        // Hash token and find user
-        const hashedToken = crypto
-            .createHash('sha256')
-            .update(token)
-            .digest('hex');
+        const hashedOtp = crypto.createHash('sha256').update(otp.trim()).digest('hex');
 
         const user = await User.findOne({
-            passwordResetToken: hashedToken,
-            passwordResetExpires: { $gt: Date.now() }
+            email,
+            passwordResetToken: hashedOtp,
+            passwordResetExpires: { $gt: Date.now() },
         }).select('+passwordResetToken +passwordResetExpires');
 
         if (!user) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid or expired reset token'
-            });
+            return res.status(400).json({ success: false, message: 'Invalid or expired OTP.' });
         }
 
-        // Set new password
         user.password = password;
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         await user.save();
 
-        // Generate new token for automatic login
-        const jwtToken = generateToken(user._id);
-
+        const jwtToken = generateToken(user._id, user.role);
         res.status(200).json({
             success: true,
-            message: 'Password reset successful',
+            message: 'Password reset successful.',
+            data: { token: jwtToken, user: { id: user._id, name: user.name, email: user.email, role: user.role } },
+        });
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({ success: false, message: 'Server error while resetting password.' });
+    }
+};
+
+// @desc    Google Sign-In — verify Google ID token or access token and return app JWT
+// @route   POST /api/auth/google
+// @access  Public
+exports.googleAuth = async (req, res) => {
+    try {
+        const { idToken, accessToken } = req.body;
+        if (!idToken && !accessToken) {
+            return res.status(400).json({ success: false, message: 'Google token is required.' });
+        }
+
+        // Verify token with Google — prefer idToken, fall back to accessToken (web)
+        const payload = await new Promise((resolve, reject) => {
+            let url;
+            if (idToken) {
+                url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
+            } else {
+                url = `https://www.googleapis.com/oauth2/v3/userinfo`;
+            }
+
+            const options = idToken ? {} : {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            };
+
+            const makeRequest = (targetUrl, reqOptions) => {
+                const urlObj = new URL(targetUrl);
+                const reqOpts = {
+                    hostname: urlObj.hostname,
+                    path: urlObj.pathname + urlObj.search,
+                    method: 'GET',
+                    ...reqOptions,
+                };
+                https.request(reqOpts, (resp) => {
+                    let data = '';
+                    resp.on('data', (chunk) => { data += chunk; });
+                    resp.on('end', () => {
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.error) reject(new Error(parsed.error_description || 'Invalid token'));
+                            else resolve(parsed);
+                        } catch { reject(new Error('Failed to parse Google response')); }
+                    });
+                }).on('error', reject).end();
+            };
+
+            makeRequest(url, options);
+        });
+
+        const { sub: googleId, email, name, picture } = payload;
+        if (!email) return res.status(400).json({ success: false, message: 'Could not retrieve email from Google.' });
+
+        // Find existing user by googleId or email
+        let user = await User.findOne({ $or: [{ googleId }, { email }] }).select('+googleId');
+
+        if (user) {
+            // Link Google ID if not already linked
+            if (!user.googleId) {
+                user.googleId = googleId;
+                user.isGoogleUser = true;
+                await user.save({ validateBeforeSave: false });
+            }
+        } else {
+            // Create new Google user
+            user = await User.create({
+                name: name || email.split('@')[0],
+                email,
+                googleId,
+                isGoogleUser: true,
+                role: 'citizen',
+            });
+        }
+
+        user.lastLogin = new Date();
+        await user.save({ validateBeforeSave: false });
+
+        const token = generateToken(user._id, user.role);
+        res.status(200).json({
+            success: true,
+            message: 'Google sign-in successful.',
             data: {
-                token: jwtToken,
+                token,
                 user: {
                     id: user._id,
                     name: user.name,
                     email: user.email,
-                    role: user.role
-                }
-            }
+                    phone: user.phone || '',
+                    nationalId: user.nationalId || '',
+                    role: user.role,
+                    isVerified: user.isVerified,
+                    isGoogleUser: user.isGoogleUser,
+                    picture: picture || null,
+                },
+            },
         });
     } catch (error) {
-        console.error('Reset password error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error while resetting password',
-            error: process.env.NODE_ENV === 'development' ? error.message : 'Failed to reset password'
-        });
+        console.error('Google auth error:', error);
+        res.status(401).json({ success: false, message: error.message || 'Google authentication failed.' });
     }
 };
 

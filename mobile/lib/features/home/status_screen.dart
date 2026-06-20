@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:findoor_app2/core/page_tracker.dart';
 
 enum AppStatus { pending, approved, rejected, other }
@@ -56,8 +58,8 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
       setState(() {
         _isLoading = false;
         _errorMsg  = e.type == DioExceptionType.connectionError
-            ? 'Cannot reach server.'
-            : (e.response?.data?['message'] as String? ?? 'Could not load status.');
+            ? S.current.couldNotReachServer
+            : (e.response?.data?['message'] as String? ?? S.current.couldNotLoadStatus);
       });
     }
   }
@@ -83,13 +85,14 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
           icon: const Icon(Icons.arrow_back_ios_new, color: darkText, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Application Status',
-            style: TextStyle(color: darkText, fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text(S.of(context).applicationStatus,
+            style: const TextStyle(color: darkText, fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
+          const LangToggleButton(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: darkText),
             onPressed: _fetchStatus,
-            tooltip: 'Refresh',
+            tooltip: S.current.refresh,
           ),
         ],
       ),
@@ -130,7 +133,7 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
             ElevatedButton.icon(
               onPressed: _fetchStatus,
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: Text(S.current.retry),
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5)),
             ),
           ],
@@ -139,9 +142,9 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
 
   Widget _buildStatusCard() {
     final (color, icon, label) = switch (_status) {
-      AppStatus.approved => (Colors.green.shade600,  Icons.check_circle_rounded,    'Approved'),
-      AppStatus.rejected => (Colors.red.shade600,    Icons.cancel_rounded,          'Rejected'),
-      AppStatus.pending  => (Colors.orange.shade600, Icons.hourglass_empty_rounded, 'Under Review'),
+      AppStatus.approved => (Colors.green.shade600,  Icons.check_circle_rounded,    S.current.approved),
+      AppStatus.rejected => (Colors.red.shade600,    Icons.cancel_rounded,          S.current.rejected),
+      AppStatus.pending  => (Colors.orange.shade600, Icons.hourglass_empty_rounded, S.current.underReview),
       AppStatus.other    => (Colors.blueGrey,        Icons.help_outline_rounded,    _statusLabel),
     };
 
@@ -171,7 +174,7 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
   }
 
   Widget _buildTrackingCode() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -182,11 +185,30 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
           children: [
             const Icon(Icons.confirmation_number_outlined, size: 18, color: Color(0xFF1E88E5)),
             const SizedBox(width: 8),
-            Text('Tracking Code: ',
+            Text(S.current.trackingCodeLabel,
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-            Text(widget.trackingCode,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14,
-                    color: Color(0xFF1E88E5), letterSpacing: 1.5)),
+            Flexible(
+              child: Text(widget.trackingCode,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14,
+                      color: Color(0xFF1E88E5), letterSpacing: 1.5)),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF1E88E5)),
+              tooltip: S.current.copy,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: widget.trackingCode));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(S.current.trackingCodeCopied),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
           ],
         ),
       );
@@ -214,13 +236,10 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
 
   Widget _buildDescription() {
     final (title, sub) = switch (_status) {
-      AppStatus.pending  => ('Under Official Review',
-          'A government officer is currently verifying your documents and eligibility.'),
-      AppStatus.approved => ('Ready for Contract',
-          'Your application was accepted. Please proceed to the housing office for next steps.'),
-      AppStatus.rejected => ('Review Declined',
-          'Your application was not approved at this time. You may re-apply or contact support.'),
-      AppStatus.other    => ('Status Updated', 'Please check back later for more details.'),
+      AppStatus.pending  => (S.current.underOfficialReview, S.current.verifyingDocs),
+      AppStatus.approved => (S.current.readyForContract, S.current.applicationAccepted),
+      AppStatus.rejected => (S.current.reviewDeclined, S.current.applicationNotApproved),
+      AppStatus.other    => (S.current.statusUpdatedLabel, S.current.checkBackLater),
     };
     return Column(
       children: [
@@ -238,9 +257,9 @@ class _StatusPageState extends State<StatusPage> with PageTracker<StatusPage> {
 
   Widget _buildActionButton(BuildContext context) {
     final (label, color, icon) = switch (_status) {
-      AppStatus.approved => ('Choose Your Unit',    Colors.green.shade700, Icons.home_work_rounded),
-      AppStatus.rejected => ('Back to Home',        Colors.red.shade700,   Icons.home_rounded),
-      _                  => ('Back to Home',        Colors.blueGrey,       Icons.home_rounded),
+      AppStatus.approved => (S.current.backToHome, Colors.green.shade700, Icons.home_rounded),
+      AppStatus.rejected => (S.current.backToHome,    Colors.red.shade700,   Icons.home_rounded),
+      _                  => (S.current.backToHome,    Colors.blueGrey,       Icons.home_rounded),
     };
     return SizedBox(
       width: double.infinity,

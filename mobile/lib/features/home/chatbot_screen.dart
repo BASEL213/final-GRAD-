@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 
 class ChatbotPage extends StatefulWidget {
   const ChatbotPage({super.key});
@@ -20,6 +22,7 @@ class _ChatbotPageState extends State<ChatbotPage> {
     },
   ];
   bool _isLoading = false;
+  String? _trackingCode;
 
   static const Color primaryBlue = Color(0xFF1E88E5);
   static const Color darkText = Color(0xFF263238);
@@ -39,6 +42,24 @@ class _ChatbotPageState extends State<ChatbotPage> {
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 60),
     ));
+    _loadTrackingCode();
+  }
+
+  Future<void> _loadTrackingCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _trackingCode = prefs.getString('tracking_code'));
+  }
+
+  bool _isStatusQuery(String text) {
+    final t = text.toLowerCase();
+    return t.contains('status') ||
+        t.contains('حالة') ||
+        t.contains('طلبي') ||
+        t.contains('تقديمي') ||
+        t.contains('تتبع') ||
+        t.contains('طلب') ||
+        t.contains('application') ||
+        t.contains('tracking');
   }
 
   @override
@@ -81,12 +102,15 @@ class _ChatbotPageState extends State<ChatbotPage> {
     _scrollToBottom();
 
     try {
+      final payload = (_trackingCode != null && _isStatusQuery(text))
+          ? '$text\nرمز التتبع: $_trackingCode'
+          : text;
       final response = await _dio.post(
         _apiUrl,
-        data: {'message': text, 'session_id': _sessionId},
+        data: {'message': payload, 'session_id': _sessionId},
       );
       final answer =
-          response.data['answer'] as String? ?? 'لم أستطع الحصول على رد.';
+          response.data['answer'] as String? ?? S.current.noReply;
       setState(() {
         _messages.add({
           'message': answer,
@@ -96,11 +120,11 @@ class _ChatbotPageState extends State<ChatbotPage> {
       });
     } on DioException catch (_) {
       setState(() {
+        final errMsg = S.current.connectionError;
         _messages.add({
-          'message':
-              'عذراً، حدث خطأ في الاتصال بالخادم.\nتأكد من تشغيل الخادم على المنفذ 5000.',
+          'message': errMsg,
           'isUser': false,
-          'isArabic': true,
+          'isArabic': _isArabic(errMsg),
         });
       });
     } finally {
@@ -128,16 +152,16 @@ class _ChatbotPageState extends State<ChatbotPage> {
               child: const Icon(Icons.auto_awesome, color: primaryBlue, size: 20),
             ),
             const SizedBox(width: 12),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("Findoor AI",
+                const Text("Findoor AI",
                     style: TextStyle(
                         color: darkText,
                         fontSize: 16,
                         fontWeight: FontWeight.bold)),
-                Text("المساعد العقاري الذكي",
-                    style: TextStyle(color: Colors.green, fontSize: 11)),
+                Text(S.of(context).smartAssistantLabel,
+                    style: const TextStyle(color: Colors.green, fontSize: 11)),
               ],
             ),
           ],
@@ -287,14 +311,14 @@ class _ChatbotPageState extends State<ChatbotPage> {
                 ),
                 child: TextField(
                   controller: _controller,
-                  textDirection: TextDirection.rtl,
-                  textAlign: TextAlign.right,
+                  textDirection: S.of(context).dir,
+                  textAlign: S.of(context).isAr ? TextAlign.right : TextAlign.left,
                   onSubmitted: (_) => _sendMessage(),
-                  decoration: const InputDecoration(
-                    hintText: "اكتب رسالتك...",
-                    hintTextDirection: TextDirection.rtl,
+                  decoration: InputDecoration(
+                    hintText: S.of(context).typeMessage,
+                    hintTextDirection: S.of(context).dir,
                     border: InputBorder.none,
-                    hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+                    hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
                   ),
                 ),
               ),

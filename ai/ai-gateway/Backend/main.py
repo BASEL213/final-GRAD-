@@ -11,10 +11,12 @@ Interactive docs (for SW team):
 import os
 import uuid
 import json
+import time
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, Header, HTTPException, Depends, UploadFile, File, Form
+from fastapi import FastAPI, Header, HTTPException, Depends, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,8 +45,24 @@ app.add_middleware(
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def require_api_key(x_api_key: str = Header(default="")):
-    if API_KEY and x_api_key != API_KEY:
+    if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized — invalid or missing X-API-Key")
+
+
+# ── Chat rate limiter — 30 messages / minute per IP ───────────────────────────
+
+_chat_hits: dict[str, list[float]] = defaultdict(list)
+_CHAT_WINDOW = 60       # seconds
+_CHAT_MAX    = 30       # requests per window
+
+def chat_rate_limit(request: Request):
+    ip  = request.client.host
+    now = time.time()
+    hits = [t for t in _chat_hits[ip] if now - t < _CHAT_WINDOW]
+    if len(hits) >= _CHAT_MAX:
+        raise HTTPException(status_code=429, detail="Too many chat requests. Slow down.")
+    hits.append(now)
+    _chat_hits[ip] = hits
 
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -101,7 +119,7 @@ def _save_application(code: str, data: dict):
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
-@app.post("/api/chat", tags=["Chat"], dependencies=[Depends(require_api_key)])
+@app.post("/api/chat", tags=["Chat"], dependencies=[Depends(require_api_key), Depends(chat_rate_limit)])
 def api_chat(body: ChatRequest):
     """
     Send a message to the Arabic real-estate AI assistant.
@@ -207,6 +225,76 @@ def api_logs(n: int = 50):
 def api_log_stats():
     """Aggregated stats: total requests, error rate, avg latency, p95 latency."""
     return {"success": True, "stats": get_stats()}
+
+
+# ── Feedback loop ────────────────────────────────────────────────────────────
+
+_FEEDBACK_FILE = os.path.join(os.path.dirname(__file__), "logs", "feedback.jsonl")
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    user_message: str
+    bot_answer: str
+    rating: int              # 1 = thumbs-down, 5 = thumbs-up (or 1-5 scale)
+    comment: Optional[str] = None
+    expected_answer: Optional[str] = None
+
+
+@app.post("/api/feedback", tags=["Monitoring"], status_code=201,
+          dependencies=[Depends(require_api_key)])
+def api_feedback(body: FeedbackRequest):
+    """
+    Collect user feedback on a chatbot response.
+    Saved to logs/feedback.jsonl for offline evaluation and fine-tuning.
+    """
+    if not 1 <= body.rating <= 5:
+        raise HTTPException(400, "'rating' must be between 1 and 5")
+
+    record = {
+        "timestamp":       datetime.now().isoformat(),
+        "session_id":      body.session_id,
+        "user_message":    body.user_message,
+        "bot_answer":      body.bot_answer,
+        "rating":          body.rating,
+        "comment":         body.comment,
+        "expected_answer": body.expected_answer,
+    }
+
+    os.makedirs(os.path.dirname(_FEEDBACK_FILE), exist_ok=True)
+    with open(_FEEDBACK_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    return {"success": True, "message": "Feedback recorded. Thank you."}
+
+
+@app.get("/api/feedback/stats", tags=["Monitoring"],
+         dependencies=[Depends(require_api_key)])
+def api_feedback_stats():
+    """Aggregated feedback stats: total entries, average rating, low-rated count."""
+    if not os.path.exists(_FEEDBACK_FILE):
+        return {"success": True, "stats": {"total": 0}}
+
+    ratings = []
+    with open(_FEEDBACK_FILE, encoding="utf-8") as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+                ratings.append(r.get("rating", 0))
+            except json.JSONDecodeError:
+                continue
+
+    total    = len(ratings)
+    avg      = sum(ratings) / total if total else 0
+    low      = sum(1 for r in ratings if r <= 2)
+    return {
+        "success": True,
+        "stats": {
+            "total":         total,
+            "avg_rating":    round(avg, 2),
+            "low_rated":     low,
+            "low_rate_pct":  round(low / total * 100, 1) if total else 0,
+        }
+    }
 
 
 # ── Sync ─────────────────────────────────────────────────────────────────────

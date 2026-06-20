@@ -107,10 +107,10 @@ const applicationSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for better query performance
 applicationSchema.index({ status: 1 });
 applicationSchema.index({ createdAt: -1 });
 applicationSchema.index({ nationalId: 1 });
+applicationSchema.index({ projectId: 1 });
 
 // Virtual for formatted creation date
 applicationSchema.virtual('createdFormatted').get(function() {

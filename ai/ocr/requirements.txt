@@ -19,7 +19,5 @@ opencv-python-headless>=4.10.0
 numpy>=2.0.0
 Pillow>=10.0.0
 
-# ── PaddleOCR (offline fallback — heavy, ~50 MB model download on first run) ──
-paddlepaddle>=3.0.0
-paddleocr>=3.5.0
-paddlex>=3.5.0
+# PaddleOCR removed — too large for cloud deployment (multi-GB download)
+# LLM-based extraction (Gemini/Groq) handles all NID fields

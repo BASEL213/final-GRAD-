@@ -36,6 +36,24 @@ const matchesPriceBand = (priceRange, band) => {
   }
 };
 
+// Rewrite any stored host (e.g. 192.168.1.8:3000) to the actual API base so
+// images work when browsing from localhost or a different machine.
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api')
+  .replace(/\/api$/, '');
+const fixImageUrl = (url) => {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    const base = new URL(API_ORIGIN);
+    u.hostname = base.hostname;
+    u.port     = base.port;
+    u.protocol = base.protocol;
+    return u.toString();
+  } catch {
+    return url;
+  }
+};
+
 const EMPTY_FORM = {
   name: '', location: '', totalUnits: '', availableUnits: '',
   priceRange: '', type: 'Apartments', status: 'active',
@@ -330,9 +348,10 @@ const Projects = () => {
                         <td style={{ padding: '6px 8px' }}>
                           {project.imageUrl ? (
                             <img
-                              src={project.imageUrl}
+                              src={fixImageUrl(project.imageUrl)}
                               alt={project.name}
                               style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--gray-200)' }}
+                              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                             />
                           ) : (
                             <div style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--gray-100)', border: '1px solid var(--gray-200)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -351,7 +370,19 @@ const Projects = () => {
                         <td style={{ fontSize: 13 }}>
                           {typeof project.location === 'string' ? project.location : (project.location?.city || '—')}
                         </td>
-                        <td style={{ fontSize: 13 }}>{project.type || '—'}</td>
+                        <td style={{ fontSize: 13 }}>
+                          <div>{project.type || '—'}</div>
+                          {Array.isArray(project.propertyTypes) && project.propertyTypes.length > 0 && (
+                            <div className="d-flex flex-wrap gap-1 mt-1">
+                              {project.propertyTypes.map((pt, i) => (
+                                <span key={i} title={pt.units?.join(', ')}
+                                  style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: 'var(--gray-100)', border: '1px solid var(--gray-200)', color: 'var(--gray-600)', cursor: 'default' }}>
+                                  {pt.category} ({pt.units?.length || 0})
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
                         <td>
                           <div style={{ fontSize: 13 }}>
                             <span style={{ fontWeight: 600 }}>{project.availableUnits || 0}</span>
@@ -457,7 +488,7 @@ const Projects = () => {
                     </select>
                   </div>
                   <div className="col-md-6">
-                    <label className="form-label">Completion Date</label>
+                    <label className="form-label">Completion Date <span style={{color:'var(--gray-400)',fontSize:11}}>(optional)</span></label>
                     <input type="date" className="form-control" value={formData.completionDate}
                       onChange={e => setFormData(f => ({ ...f, completionDate: e.target.value }))} />
                   </div>
@@ -467,6 +498,23 @@ const Projects = () => {
                       onChange={e => setFormData(f => ({ ...f, description: e.target.value }))}
                       placeholder="Brief project description…" />
                   </div>
+                  {editingProject && Array.isArray(editingProject.propertyTypes) && editingProject.propertyTypes.length > 0 && (
+                    <div className="col-12">
+                      <label className="form-label">Property Types <span style={{color:'var(--gray-400)',fontSize:11}}>(set via seed)</span></label>
+                      <div className="d-flex flex-column gap-2">
+                        {editingProject.propertyTypes.map((pt, i) => (
+                          <div key={i} style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 12px' }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{pt.category}</div>
+                            <div className="d-flex flex-wrap gap-1">
+                              {(pt.units || []).map((u, j) => (
+                                <span key={j} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: '#e3f2fd', color: '#1565c0' }}>{u}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="col-12">
                     <label className="form-label">Image URL</label>
                     <div className="d-flex gap-2 align-items-start">
@@ -474,7 +522,7 @@ const Projects = () => {
                         onChange={e => setFormData(f => ({ ...f, imageUrl: e.target.value }))}
                         placeholder="http://localhost:3000/uploads/projects/photo.jpg" />
                       {formData.imageUrl && (
-                        <img src={formData.imageUrl} alt="preview"
+                        <img src={fixImageUrl(formData.imageUrl)} alt="preview"
                           style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--gray-200)', flexShrink: 0 }}
                           onError={e => { e.target.style.display = 'none'; }} />
                       )}

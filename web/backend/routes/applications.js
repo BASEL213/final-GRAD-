@@ -1,6 +1,8 @@
 const express = require('express');
 const { body } = require('express-validator');
 const applicationController = require('../controllers/applicationController');
+const protect      = require('../middleware/protect');
+const requireAdmin = require('../middleware/requireAdmin');
 
 const router = express.Router();
 
@@ -46,35 +48,13 @@ const validateApplication = [
         .withMessage('Current housing must be between 10 and 200 characters')
 ];
 
-// @route   GET /api/applications
-// @desc    Get all applications with pagination and filtering
-// @access  Public
-router.get('/', applicationController.getAllApplications);
+router.get('/',       protect, requireAdmin, applicationController.getAllApplications);
+router.get('/stats',  protect, requireAdmin, applicationController.getApplicationStats);
+router.get('/recent', protect, requireAdmin, applicationController.getRecentApplications);
+router.get('/:id',    protect, applicationController.getApplicationById);
+router.post('/',      validateApplication,   applicationController.createApplication);
 
-// @route   GET /api/applications/stats
-// @desc    Get application statistics
-// @access  Public
-router.get('/stats', applicationController.getApplicationStats);
-
-// @route   GET /api/applications/recent
-// @desc    Get recent applications linked to MongoDB projects
-// @access  Public
-router.get('/recent', applicationController.getRecentApplications);
-
-// @route   GET /api/applications/:id
-// @desc    Get single application by ID
-// @access  Public
-router.get('/:id', applicationController.getApplicationById);
-
-// @route   POST /api/applications
-// @desc    Create new application
-// @access  Public
-router.post('/', validateApplication, applicationController.createApplication);
-
-// @route   PUT /api/applications/:id/status
-// @desc    Update application status (approve/reject)
-// @access  Public
-router.put('/:id/status', [
+router.put('/:id/status', protect, requireAdmin, [
     body('status')
         .isIn(['approved', 'rejected'])
         .withMessage('Status must be approved or rejected'),
@@ -88,14 +68,7 @@ router.put('/:id/status', [
         .withMessage('Reviewed by must be a string')
 ], applicationController.updateApplicationStatus);
 
-// @route   DELETE /api/applications/:id
-// @desc    Delete application
-// @access  Public
-router.delete('/:id', applicationController.deleteApplication);
-
-// @route   PUT /api/applications/:id
-// @desc    Update application
-// @access  Public
-router.put('/:id', applicationController.updateApplication);
+router.delete('/:id', protect, requireAdmin, applicationController.deleteApplication);
+router.put('/:id',    protect, requireAdmin, applicationController.updateApplication);
 
 module.exports = router;

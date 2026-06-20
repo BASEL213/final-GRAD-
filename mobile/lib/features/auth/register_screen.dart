@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:findoor_app2/features/home/nid_scan_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -84,6 +85,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _showSuccessDialog() {
+    final s = S.current;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -94,10 +96,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           children: [
             const Icon(Icons.check_circle_rounded, color: Colors.green, size: 70),
             const SizedBox(height: 15),
-            const Text('Account Created!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+            Text(s.accountCreated, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
             const SizedBox(height: 10),
-            const Text('Welcome to Findoor. Your registration is complete.',
-                textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+            Text(s.welcomeToFindoor,
+                textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 25),
             SizedBox(
               width: double.infinity,
@@ -111,7 +113,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Navigator.pop(ctx);
                   Navigator.pop(context);
                 },
-                child: const Text('Go to Login', style: TextStyle(color: Colors.white, fontSize: 16)),
+                child: Text(s.goToLogin, style: const TextStyle(color: Colors.white, fontSize: 16)),
               ),
             ),
           ],
@@ -122,74 +124,80 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _buildHeader(),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
-                child: Column(
-                  children: [
-                    _buildInput(label: 'Full Name',      icon: Icons.person_outline,     hint: 'As written in your ID', controller: _nameController),
-                    const SizedBox(height: 15),
-                    _buildInput(label: 'Email Address',  icon: Icons.email_outlined,     hint: 'example@mail.com',      controller: _emailController, isEmail: true),
-                    const SizedBox(height: 15),
-                    _buildInput(label: 'National ID',    icon: Icons.badge_outlined,     hint: '14 digits number',      controller: _idController,    isID: true),
-                    const SizedBox(height: 10),
-                    _buildScanButton(),
-                    const SizedBox(height: 15),
-                    _buildInput(label: 'Phone Number',   icon: Icons.phone_android_rounded, hint: '01xxxxxxxxx',        controller: _phoneController, isPhone: true),
-                    const SizedBox(height: 15),
-                    _buildInput(
-                      label: 'Password', icon: Icons.lock_outline, hint: '••••••••',
-                      controller: _passController, isPassword: true,
-                      obscure: _obscurePass, onToggle: () => setState(() => _obscurePass = !_obscurePass),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  _buildHeader(s),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
+                    child: Column(
+                      children: [
+                        _buildInput(label: s.fullName,      icon: Icons.person_outline,        hint: s.asOnId,           controller: _nameController),
+                        const SizedBox(height: 15),
+                        _buildInput(label: s.emailAddress,  icon: Icons.email_outlined,        hint: 'example@mail.com', controller: _emailController, isEmail: true),
+                        const SizedBox(height: 15),
+                        _buildInput(label: s.nationalId,    icon: Icons.badge_outlined,        hint: s.fourteenDigits,   controller: _idController,    isID: true),
+                        const SizedBox(height: 10),
+                        _buildScanButton(s),
+                        const SizedBox(height: 15),
+                        _buildInput(label: s.phoneNumber,   icon: Icons.phone_android_rounded, hint: '01xxxxxxxxx',      controller: _phoneController, isPhone: true),
+                        const SizedBox(height: 15),
+                        _buildInput(
+                          label: s.password, icon: Icons.lock_outline, hint: '••••••••',
+                          controller: _passController, isPassword: true,
+                          obscure: _obscurePass, onToggle: () => setState(() => _obscurePass = !_obscurePass),
+                        ),
+                        const SizedBox(height: 15),
+                        _buildInput(
+                          label: s.confirmPassword, icon: Icons.lock_reset_rounded, hint: s.reEnterPassword,
+                          controller: _confirmPassController, isPassword: true,
+                          obscure: _obscureConfirmPass, onToggle: () => setState(() => _obscureConfirmPass = !_obscureConfirmPass),
+                          validator: (v) => v != _passController.text ? S.current.passwordsNoMatch : null,
+                        ),
+                        const SizedBox(height: 35),
+                        _buildRegisterButton(s),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(s.alreadyHaveAccount,
+                              style: const TextStyle(color: Color(0xFF1E88E5), fontWeight: FontWeight.w600)),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                     ),
-                    const SizedBox(height: 15),
-                    _buildInput(
-                      label: 'Confirm Password', icon: Icons.lock_reset_rounded, hint: 'Re-enter password',
-                      controller: _confirmPassController, isPassword: true,
-                      obscure: _obscureConfirmPass, onToggle: () => setState(() => _obscureConfirmPass = !_obscureConfirmPass),
-                      validator: (v) => v != _passController.text ? 'Passwords do not match' : null,
-                    ),
-                    const SizedBox(height: 35),
-                    _buildRegisterButton(),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Already have an account? Login',
-                          style: TextStyle(color: Color(0xFF1E88E5), fontWeight: FontWeight.w600)),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          const Positioned(top: 50, right: 16, child: LangToggleButton()),
+        ],
       ),
     );
   }
 
-  Widget _buildHeader() => Container(
+  Widget _buildHeader(S s) => Container(
         height: 200,
         width: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(colors: [Color(0xFF1E88E5), Color(0xFF1565C0)]),
           borderRadius: BorderRadius.only(bottomLeft: Radius.circular(80)),
         ),
-        child: const Padding(
-          padding: EdgeInsets.only(left: 30, top: 40),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 30, top: 40),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Create Account', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
-              Text('Start your journey with Findoor', style: TextStyle(fontSize: 16, color: Colors.white70)),
+              Text(s.createAccount, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(s.startJourney, style: const TextStyle(fontSize: 16, color: Colors.white70)),
             ],
           ),
         ),
@@ -220,10 +228,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 : (isEmail ? TextInputType.emailAddress : TextInputType.text),
             validator: validator ??
                 (v) {
-                  if (v == null || v.isEmpty) return 'This field is required';
-                  if (isID && v.length != 14) return 'National ID must be 14 digits';
-                  if (isPhone && v.length < 11) return 'Invalid phone number';
-                  if (isEmail && !v.contains('@')) return 'Enter a valid email';
+                  if (v == null || v.isEmpty) return S.current.fieldRequired;
+                  if (isID && v.length != 14) return S.current.nidMust14;
+                  if (isPhone && v.length < 11) return S.current.invalidPhone;
+                  if (isEmail && !v.contains('@')) return S.current.emailInvalid;
                   return null;
                 },
             decoration: InputDecoration(
@@ -251,7 +259,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ],
       );
 
-  Widget _buildScanButton() => GestureDetector(
+  Widget _buildScanButton(S s) => GestureDetector(
         onTap: _handleNidScan,
         child: Container(
           width: double.infinity,
@@ -277,7 +285,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(width: 10),
               Text(
-                _nidScanned ? 'NID Scanned — tap to re-scan' : 'Scan NID to auto-fill Name & ID',
+                _nidScanned ? s.nidScanned : s.scanNid,
                 style: TextStyle(
                   color: _nidScanned ? Colors.green : const Color(0xFF1E88E5),
                   fontWeight: FontWeight.w600, fontSize: 13,
@@ -288,7 +296,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
 
-  Widget _buildRegisterButton() => Container(
+  Widget _buildRegisterButton(S s) => Container(
         width: double.infinity,
         height: 55,
         decoration: BoxDecoration(
@@ -304,8 +312,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           child: _isLoading
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text('CREATE ACCOUNT',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.1)),
+              : Text(s.createAccountBtn,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.1)),
         ),
       );
 }

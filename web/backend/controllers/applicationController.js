@@ -259,12 +259,32 @@ exports.createApplication = async (req, res) => {
             projectName: project.name,
         };
 
-        const application = await Application.create(payload);
+        // Use a MongoDB transaction so the application insert and the unit decrement
+        // are atomic — if either fails the other is rolled back automatically.
+        const session = await mongoose.startSession();
+        let application;
+        try {
+            await session.withTransaction(async () => {
+                [application] = await Application.create([payload], { session });
+
+                // Decrement availableUnits only when the project tracks inventory
+                if (project.availableUnits !== undefined && project.availableUnits > 0) {
+                    await Project.findByIdAndUpdate(
+                        project._id,
+                        { $inc: { availableUnits: -1 } },
+                        { session, new: true }
+                    );
+                }
+            });
+        } finally {
+            session.endSession();
+        }
+
         const [enriched] = await enrichApplicationsWithProjects([application]);
 
         await auditService.logApplicationCreated(application, req);
 
-        // Create admin notification for new application
+        // Create admin notification for new application (best-effort, must not block)
         try {
             const Notification = require('../models/Notification');
             await Notification.create({
@@ -279,9 +299,7 @@ exports.createApplication = async (req, res) => {
                 relatedEntityType: 'Application',
                 actionUrl: `/applications/${application._id}`,
             });
-        } catch (notifErr) {
-            // Notification failure must not block the application submission
-        }
+        } catch (_notifErr) {}
 
         res.status(201).json({
             success: true,
@@ -290,8 +308,7 @@ exports.createApplication = async (req, res) => {
         });
     } catch (error) {
         console.error('Error in createApplication:', error);
-        
-        // Handle duplicate key errors
+
         if (error.code === 11000) {
             const field = Object.keys(error.keyValue)[0];
             return res.status(400).json({

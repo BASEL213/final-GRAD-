@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 
 /// Single source of truth for all backend URLs and shared Dio options.
 class ApiConfig {
-  static const String _defaultIp  = '192.168.1.8';
+  static const String _defaultIp  = 'findoor-backend.onrender.com';
   static const String _serverIpKey = 'server_ip';
 
   // In-memory cache — populated by init() at app startup.
@@ -28,7 +29,16 @@ class ApiConfig {
 
   /// Node.js Express — the main backend (auth, projects, applications, AI proxy).
   static String get nodeApi =>
-      kIsWeb ? 'http://localhost:3000/api' : 'http://$_cachedIp:3000/api';
+      kIsWeb ? 'http://localhost:3000/api' : 'https://$_cachedIp/api';
+
+  /// Rewrites localhost/127.0.0.1 URLs to the configured server IP so that
+  /// images stored by the admin on the PC are accessible from the mobile device.
+  static String fixImageUrl(String url) {
+    if (kIsWeb || url.isEmpty) return url;
+    return url
+        .replaceFirst('http://localhost:', 'http://$_cachedIp:')
+        .replaceFirst('http://127.0.0.1:', 'http://$_cachedIp:');
+  }
 
   /// Chat requests go through the Node.js proxy — API key never exposed on device.
   static String get chatUrl => '$nodeApi/ai/chat';
@@ -45,4 +55,34 @@ class ApiConfig {
       headers: token.isNotEmpty ? {'Authorization': 'Bearer $token'} : {},
     );
   }
+
+  /// A Dio instance with the 401-interceptor pre-wired.
+  /// Screens that call protected endpoints should use this.
+  static Dio get dio {
+    final d = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ));
+    d.interceptors.add(InterceptorsWrapper(
+      onError: (DioException e, handler) async {
+        if (e.response?.statusCode == 401) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('auth_token');
+          await prefs.remove('user_role');
+          final ctx = _navigatorKey.currentContext;
+          if (ctx != null && ctx.mounted) {
+            Navigator.of(ctx, rootNavigator: true)
+                .pushNamedAndRemoveUntil('/login', (_) => false);
+          }
+        }
+        handler.next(e);
+      },
+    ));
+    return d;
+  }
+
+  /// Global navigator key — set this on MaterialApp so the interceptor can navigate.
+  static final GlobalKey<NavigatorState> _navigatorKey =
+      GlobalKey<NavigatorState>();
+  static GlobalKey<NavigatorState> get navigatorKey => _navigatorKey;
 }

@@ -167,4 +167,9 @@ router.post('/reset-password', validateResetPassword, authController.resetPasswo
 // @access  Private
 router.put('/change-password', protect, validateChangePassword, authController.changePassword);
 
+// @route   POST /api/auth/google
+// @desc    Sign in / register with Google ID token
+// @access  Public
+router.post('/google', authController.googleAuth);
+
 module.exports = router;

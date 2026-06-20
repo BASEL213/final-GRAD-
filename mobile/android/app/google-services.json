@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "280204697823",
+    "project_id": "findoor-958b6",
+    "storage_bucket": "findoor-958b6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:280204697823:android:cc9db1f460e3314203096a",
+        "android_client_info": {
+          "package_name": "com.example.findoor_app2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDPioxynxeX7rJGK_z1fg97M1vq_lHC4n4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

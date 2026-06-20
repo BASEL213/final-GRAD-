@@ -1,6 +1,8 @@
 const express = require('express');
 const { body } = require('express-validator');
 const projectController = require('../controllers/projectController');
+const protect       = require('../middleware/protect');
+const requireAdmin  = require('../middleware/requireAdmin');
 
 const router = express.Router();
 
@@ -36,8 +38,7 @@ const validateProject = [
         .isIn(['active', 'completed', 'planning'])
         .withMessage('Invalid project status'),
     body('completionDate')
-        .notEmpty()
-        .withMessage('Completion date is required')
+        .optional({ nullable: true, checkFalsy: true })
         .isISO8601()
         .withMessage('Invalid date format'),
     body('imageUrl')
@@ -47,10 +48,10 @@ const validateProject = [
 ];
 
 // Routes
-router.get('/', projectController.getAllProjects);
+router.get('/',    projectController.getAllProjects);
 router.get('/:id', projectController.getProjectById);
-router.post('/', validateProject, projectController.createProject);
-router.put('/:id', validateProject, projectController.updateProject);
-router.delete('/:id', projectController.deleteProject);
+router.post('/',    protect, requireAdmin, validateProject, projectController.createProject);
+router.put('/:id',  protect, requireAdmin, validateProject, projectController.updateProject);
+router.delete('/:id', protect, requireAdmin, projectController.deleteProject);
 
 module.exports = router;

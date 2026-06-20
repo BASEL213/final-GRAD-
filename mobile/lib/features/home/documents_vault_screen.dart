@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:findoor_app2/core/page_tracker.dart';
 import 'package:findoor_app2/features/home/nid_scan_screen.dart';
 
@@ -55,7 +56,7 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('${file.name} added to your vault'),
+            content: Text(S.current.addedToVault(file.name)),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ));
@@ -63,8 +64,8 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not open file picker. Please try again.'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(S.current.couldNotOpenFilePicker),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ));
@@ -88,15 +89,15 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
           };
         });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${img.name} added to your vault'),
+          content: Text(S.current.addedToVault(img.name)),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ));
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not open gallery. Please try again.'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(S.current.couldNotOpenGallery),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ));
@@ -221,13 +222,13 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.orange.shade200),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.info_outline, color: Colors.orange, size: 18),
-                  SizedBox(width: 8),
-                  Text('PDF preview not available in-app.',
-                      style: TextStyle(
+                  const Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                  const SizedBox(width: 8),
+                  Text(S.current.pdfPreviewNotAvailable,
+                      style: const TextStyle(
                           fontSize: 13, color: Colors.orange)),
                 ],
               ),
@@ -246,14 +247,13 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
       builder: (ctx) => AlertDialog(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Remove Document',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-        content: Text(
-            'Remove "$docType" from your vault? This cannot be undone.'),
+        title: Text(S.current.removeDocument,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        content: Text(S.current.removeDocConfirm(docType)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
+              child: Text(S.current.cancel)),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.redAccent,
@@ -263,12 +263,12 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
               setState(() => uploadedDocs[docType] = null);
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('$docType removed'),
+                content: Text(S.current.removedFromVault(docType)),
                 behavior: SnackBarBehavior.floating,
               ));
             },
-            child: const Text('Remove',
-                style: TextStyle(color: Colors.white)),
+            child: Text(S.current.remove,
+                style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -303,7 +303,7 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
               ),
             ),
             const SizedBox(height: 20),
-            Text('Add $docType',
+            Text(S.current.addDoc(docType),
                 style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
@@ -311,8 +311,8 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
             const SizedBox(height: 6),
             Text(
               isFront
-                  ? 'Scan with OCR to auto-extract your details, or upload a photo.'
-                  : 'Upload a photo of the back of your National ID.',
+                  ? S.current.scanWithOcrDesc
+                  : S.current.uploadPhotoBack,
               style: TextStyle(
                   fontSize: 13, color: Colors.grey.shade600),
             ),
@@ -321,8 +321,8 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
               _sheetOption(
                 icon: Icons.document_scanner_rounded,
                 color: primaryBlue,
-                title: 'Scan with NID Scanner',
-                subtitle: 'Auto-read your card using OCR',
+                title: S.current.scanWithNidScanner,
+                subtitle: S.current.autoReadCard,
                 onTap: () async {
                   Navigator.pop(context);
                   final result =
@@ -342,8 +342,8 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
             _sheetOption(
               icon: Icons.photo_library_outlined,
               color: Colors.grey.shade700,
-              title: 'Upload from Gallery',
-              subtitle: 'Choose an existing photo from your device',
+              title: S.current.uploadFromGallery,
+              subtitle: S.current.chooseExistingPhoto,
               onTap: () async {
                 Navigator.pop(context);
                 await _pickFromGallery(docType);
@@ -355,7 +355,7 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
               width: double.infinity,
               child: TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text('Cancel',
+                child: Text(S.current.cancel,
                     style: TextStyle(color: Colors.grey.shade500)),
               ),
             ),
@@ -468,13 +468,13 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
                     const Icon(Icons.security_rounded,
                         color: Colors.white, size: 40),
                     const SizedBox(height: 10),
-                    const Text('Secure Documents Vault',
-                        style: TextStyle(
+                    Text(S.current.secureDocumentsVault,
+                        style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
                             fontWeight: FontWeight.bold)),
                     Text(
-                        '$uploadedCount of ${uploadedDocs.length} files secured',
+                        S.current.filesSecured(uploadedCount, uploadedDocs.length),
                         style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.7))),
                   ],
@@ -494,8 +494,8 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
               delegate: SliverChildListDelegate(<Widget>[
                 _buildStatsRow(uploadedCount, uploadedDocs.length),
                 const SizedBox(height: 30),
-                const Text('Your Paperwork',
-                    style: TextStyle(
+                Text(S.current.yourPaperwork,
+                    style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: darkText)),
@@ -515,9 +515,9 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
 
   Widget _buildStatsRow(int uploaded, int total) => Row(
         children: [
-          _statItem('Uploaded', uploaded.toString(), Colors.green),
+          _statItem(S.current.uploaded, uploaded.toString(), Colors.green),
           const SizedBox(width: 15),
-          _statItem('Missing', (total - uploaded).toString(), Colors.orange),
+          _statItem(S.current.missing, (total - uploaded).toString(), Colors.orange),
         ],
       );
 
@@ -593,7 +593,7 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
               style: const TextStyle(
                   fontWeight: FontWeight.bold, fontSize: 15)),
           subtitle: Text(
-            isUploaded ? 'Verified File' : 'Waiting for upload',
+            isUploaded ? S.current.verifiedFile : S.current.waitingForUpload,
             style: TextStyle(
                 color: isUploaded ? Colors.green : Colors.grey,
                 fontSize: 12),
@@ -612,9 +612,9 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
                   children: [
                     // ── File details ────────────────────────
                     if (isUploaded) ...[
-                      _fileDetailRow('File Name', fileData['name']!),
-                      _fileDetailRow('Size', fileData['size']!),
-                      _fileDetailRow('Date', fileData['date']!),
+                      _fileDetailRow(S.current.fileName, fileData['name']!),
+                      _fileDetailRow(S.current.sizeLabel, fileData['size']!),
+                      _fileDetailRow(S.current.dateLabel, fileData['date']!),
                       const Divider(height: 20),
                     ],
 
@@ -631,7 +631,7 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
                             icon: const Icon(
                                 Icons.remove_red_eye_outlined,
                                 size: 16),
-                            label: const Text('View'),
+                            label: Text(S.current.view),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: primaryBlue,
                               side: const BorderSide(
@@ -651,7 +651,7 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
                             onPressed: () => _deleteDocument(title),
                             icon: const Icon(Icons.delete_outline,
                                 size: 16),
-                            label: const Text('Delete'),
+                            label: Text(S.current.delete),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.redAccent,
                               side: const BorderSide(
@@ -698,8 +698,8 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
                                 ),
                                 label: Text(
                                     isUploaded
-                                        ? 'Replace'
-                                        : 'Scan / Upload'),
+                                        ? S.current.replace
+                                        : S.current.scanUpload),
                               )
                             : ElevatedButton.icon(
                                 onPressed: () => _pickFile(title),
@@ -730,8 +730,8 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
                                     size: 16),
                                 label: Text(
                                     isUploaded
-                                        ? 'Replace'
-                                        : 'Upload Now'),
+                                        ? S.current.replace
+                                        : S.current.uploadNow),
                               ),
                       ],
                     ),
@@ -769,15 +769,15 @@ class _DocumentsVaultScreenState extends State<DocumentsVaultScreen>
           border: Border.all(
               color: Colors.amber.withValues(alpha: 0.3)),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.info_outline, color: Colors.amber, size: 20),
-            SizedBox(width: 12),
+            const Icon(Icons.info_outline, color: Colors.amber, size: 20),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Your files are encrypted and only visible to authorized housing officers during active applications.',
+                S.current.securityNote,
                 style:
-                    TextStyle(fontSize: 12, color: Colors.black87),
+                    const TextStyle(fontSize: 12, color: Colors.black87),
               ),
             ),
           ],

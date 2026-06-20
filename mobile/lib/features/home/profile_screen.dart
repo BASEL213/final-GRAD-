@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:findoor_app2/core/page_tracker.dart';
 import 'package:findoor_app2/features/auth/login_screen.dart';
 
@@ -50,23 +51,21 @@ class _ProfilePageState extends State<ProfilePage>
   // ── Logout ──────────────────────────────────────────────────────────────
 
   Future<void> _handleLogout() async {
+    final s = S.current;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Logout',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to logout?'),
+        title: Text(s.logoutTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(s.logoutConfirm),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(s.cancel)),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Logout',
-                style: TextStyle(color: Colors.white)),
+            child: Text(s.logout, style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -86,9 +85,11 @@ class _ProfilePageState extends State<ProfilePage>
   // ── Edit profile ─────────────────────────────────────────────────────────
 
   void _showEditDialog() {
-    final messenger  = ScaffoldMessenger.of(context);
-    final nameCtrl   = TextEditingController(text: _name);
-    final phoneCtrl  = TextEditingController(text: _phone);
+    final messenger = ScaffoldMessenger.of(context);
+    final nameCtrl  = TextEditingController(text: _name);
+    final phoneCtrl = TextEditingController(text: _phone);
+    final nidCtrl   = TextEditingController(text: _nid);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -107,17 +108,21 @@ class _ProfilePageState extends State<ProfilePage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Edit Profile',
-                  style: TextStyle(
+              Text(S.current.editProfileTitle,
+                  style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: darkText)),
               const SizedBox(height: 20),
-              _editField('Full Name', nameCtrl, Icons.person_outline),
+              _editField(S.current.fullName, nameCtrl, Icons.person_outline),
               const SizedBox(height: 16),
-              _editField('Phone Number', phoneCtrl,
+              _editField(S.current.phoneNumber, phoneCtrl,
                   Icons.phone_android_rounded,
                   type: TextInputType.phone),
+              const SizedBox(height: 16),
+              _editField(S.current.nationalId, nidCtrl,
+                  Icons.badge_outlined,
+                  type: TextInputType.number),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -129,42 +134,52 @@ class _ProfilePageState extends State<ProfilePage>
                         borderRadius: BorderRadius.circular(14)),
                   ),
                   onPressed: () async {
-                    final nav = Navigator.of(ctx);
-                    final prefs =
-                        await SharedPreferences.getInstance();
-                    await prefs.setString(
-                        'user_name', nameCtrl.text.trim());
-                    await prefs.setString(
-                        'user_phone', phoneCtrl.text.trim());
+                    final nidVal = nidCtrl.text.trim();
+                    if (nidVal.isNotEmpty &&
+                        (nidVal.length != 14 ||
+                            !RegExp(r'^\d{14}$').hasMatch(nidVal))) {
+                      messenger.showSnackBar(const SnackBar(
+                        content: Text(
+                            'الرقم القومي يجب أن يتكون من 14 رقماً'),
+                        backgroundColor: Colors.redAccent,
+                        behavior: SnackBarBehavior.floating,
+                      ));
+                      return;
+                    }
+                    final nav   = Navigator.of(ctx);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('user_name',  nameCtrl.text.trim());
+                    await prefs.setString('user_phone', phoneCtrl.text.trim());
+                    await prefs.setString('user_nid',   nidVal);
                     if (mounted) {
                       setState(() {
                         _name  = nameCtrl.text.trim();
                         _phone = phoneCtrl.text.trim();
+                        _nid   = nidVal;
                       });
                       nav.pop();
-                      messenger.showSnackBar(const SnackBar(
-                          content: Text('Profile updated'),
+                      messenger.showSnackBar(SnackBar(
+                          content: Text(S.current.profileUpdated),
                           behavior: SnackBarBehavior.floating));
                     }
                     try {
-                      final prefs2 =
-                          await SharedPreferences.getInstance();
-                      final userId =
-                          prefs2.getString('user_id') ?? '';
+                      final userId = prefs.getString('user_id') ?? '';
                       if (userId.isNotEmpty) {
+                        final body = <String, dynamic>{
+                          'name':  nameCtrl.text.trim(),
+                          'phone': phoneCtrl.text.trim(),
+                        };
+                        if (nidVal.isNotEmpty) body['nationalId'] = nidVal;
                         await Dio().put(
                           '${ApiConfig.nodeApi}/users/$userId',
-                          data: {
-                            'name':  nameCtrl.text.trim(),
-                            'phone': phoneCtrl.text.trim(),
-                          },
+                          data: body,
                           options: await ApiConfig.authOptions,
                         );
                       }
                     } catch (_) {}
                   },
-                  child: const Text('Save Changes',
-                      style: TextStyle(
+                  child: Text(S.current.saveChanges,
+                      style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 16)),
@@ -208,20 +223,20 @@ class _ProfilePageState extends State<ProfilePage>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Change Password',
-                    style: TextStyle(
+                Text(S.current.changePasswordTitle,
+                    style: const TextStyle(
                         fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
-                _passwordField('Current Password', currentCtrl,
+                _passwordField(S.current.currentPassword, currentCtrl,
                     obscureCurrent,
                     () => setSheetState(
                         () => obscureCurrent = !obscureCurrent)),
                 const SizedBox(height: 14),
-                _passwordField('New Password', newCtrl, obscureNew,
+                _passwordField(S.current.newPassword, newCtrl, obscureNew,
                     () => setSheetState(
                         () => obscureNew = !obscureNew)),
                 const SizedBox(height: 14),
-                _passwordField('Confirm New Password', confirmCtrl,
+                _passwordField(S.current.confirmNewPassword, confirmCtrl,
                     obscureConfirm,
                     () => setSheetState(
                         () => obscureConfirm = !obscureConfirm)),
@@ -241,9 +256,8 @@ class _ProfilePageState extends State<ProfilePage>
                             if (currentCtrl.text.trim().isEmpty ||
                                 newCtrl.text.trim().isEmpty) {
                               ScaffoldMessenger.of(context)
-                                  .showSnackBar(const SnackBar(
-                                content: Text(
-                                    'Please fill in all fields.'),
+                                  .showSnackBar(SnackBar(
+                                content: Text(S.current.fillAllFields),
                                 backgroundColor: Colors.redAccent,
                                 behavior: SnackBarBehavior.floating,
                               ));
@@ -251,9 +265,8 @@ class _ProfilePageState extends State<ProfilePage>
                             }
                             if (newCtrl.text != confirmCtrl.text) {
                               ScaffoldMessenger.of(context)
-                                  .showSnackBar(const SnackBar(
-                                content: Text(
-                                    'New passwords do not match.'),
+                                  .showSnackBar(SnackBar(
+                                content: Text(S.current.newPasswordsNoMatch),
                                 backgroundColor: Colors.redAccent,
                                 behavior: SnackBarBehavior.floating,
                               ));
@@ -261,9 +274,8 @@ class _ProfilePageState extends State<ProfilePage>
                             }
                             if (newCtrl.text.length < 6) {
                               ScaffoldMessenger.of(context)
-                                  .showSnackBar(const SnackBar(
-                                content: Text(
-                                    'Password must be at least 6 characters.'),
+                                  .showSnackBar(SnackBar(
+                                content: Text(S.current.passwordTooShort),
                                 backgroundColor: Colors.redAccent,
                                 behavior: SnackBarBehavior.floating,
                               ));
@@ -289,9 +301,8 @@ class _ProfilePageState extends State<ProfilePage>
                               if (ctx.mounted) Navigator.pop(ctx);
                               if (mounted) {
                                 ScaffoldMessenger.of(context)
-                                    .showSnackBar(const SnackBar(
-                                  content: Text(
-                                      'Password changed successfully.'),
+                                    .showSnackBar(SnackBar(
+                                  content: Text(S.current.passwordChangedSuccess),
                                   backgroundColor: Colors.green,
                                   behavior: SnackBarBehavior.floating,
                                 ));
@@ -301,8 +312,8 @@ class _ProfilePageState extends State<ProfilePage>
                               final msg = (e is DioException)
                                   ? (e.response?.data?['message']
                                           as String? ??
-                                      'Incorrect current password.')
-                                  : 'Could not change password. Try again.';
+                                      S.current.incorrectCurrentPassword)
+                                  : S.current.couldNotChangePassword;
                               if (mounted) {
                                 ScaffoldMessenger.of(context)
                                     .showSnackBar(SnackBar(
@@ -319,8 +330,8 @@ class _ProfilePageState extends State<ProfilePage>
                             height: 22,
                             child: CircularProgressIndicator(
                                 color: Colors.white, strokeWidth: 2))
-                        : const Text('Update Password',
-                            style: TextStyle(
+                        : Text(S.current.updatePassword,
+                            style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16)),
@@ -351,8 +362,8 @@ class _ProfilePageState extends State<ProfilePage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Notifications',
-                  style: TextStyle(
+              Text(S.current.notifications,
+                  style: const TextStyle(
                       fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               Container(
@@ -376,17 +387,17 @@ class _ProfilePageState extends State<ProfilePage>
                           color: primaryBlue, size: 22),
                     ),
                     const SizedBox(width: 16),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment:
                             CrossAxisAlignment.start,
                         children: [
-                          Text('Push Notifications',
-                              style: TextStyle(
+                          Text(S.current.pushNotifications,
+                              style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15)),
-                          Text('Application status updates',
-                              style: TextStyle(
+                          Text(S.current.appStatusUpdates,
+                              style: const TextStyle(
                                   color: Colors.grey,
                                   fontSize: 12)),
                         ],
@@ -439,8 +450,8 @@ class _ProfilePageState extends State<ProfilePage>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Language',
-                style: TextStyle(
+            Text(S.current.language,
+                style: const TextStyle(
                     fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             ...languages.map((lang) => Container(
@@ -566,12 +577,13 @@ class _ProfilePageState extends State<ProfilePage>
               color: darkText, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('My Profile',
-            style: TextStyle(
+        title: Text(S.of(context).myProfile,
+            style: const TextStyle(
                 color: darkText,
                 fontWeight: FontWeight.bold,
                 fontSize: 18)),
         actions: [
+          const LangToggleButton(),
           IconButton(
             icon: const Icon(Icons.edit_outlined,
                 color: primaryBlue),
@@ -587,58 +599,58 @@ class _ProfilePageState extends State<ProfilePage>
             _buildProfileAvatar(),
             const SizedBox(height: 16),
             Text(
-              _name.isNotEmpty ? _name : 'User',
+              _name.isNotEmpty ? _name : S.of(context).userFallback,
               style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: darkText),
             ),
-            const Text('Findoor Member',
+            Text(S.of(context).findoorMember,
                 style:
-                    TextStyle(fontSize: 14, color: Colors.grey)),
+                    const TextStyle(fontSize: 14, color: Colors.grey)),
             const SizedBox(height: 32),
 
             // ── Personal Information ──────────────────────────
-            _buildSectionHeader('Personal Information'),
+            _buildSectionHeader(S.of(context).personalInformation),
             _buildProfileCard([
               _buildProfileItem(
                   Icons.email_outlined,
-                  'Email',
+                  S.of(context).email,
                   _email.isNotEmpty ? _email : '—'),
               _buildDivider(),
               _buildProfileItem(
                   Icons.phone_android_outlined,
-                  'Phone',
+                  S.of(context).phone,
                   _phone.isNotEmpty ? _phone : '—'),
               _buildDivider(),
               _buildProfileItem(
                   Icons.badge_outlined,
-                  'National ID',
+                  S.of(context).nationalId,
                   _nid.isNotEmpty ? _maskNid(_nid) : '—'),
             ]),
             const SizedBox(height: 24),
 
             // ── Account Settings ──────────────────────────────
-            _buildSectionHeader('Account Settings'),
+            _buildSectionHeader(S.of(context).accountSettings),
             _buildProfileCard([
               _buildTappableProfileItem(
                 icon: Icons.shield_outlined,
-                label: 'Security',
-                value: 'Change password',
+                label: S.of(context).security,
+                value: S.of(context).changePasswordLabel,
                 onTap: _showChangePasswordSheet,
               ),
               _buildDivider(),
               _buildTappableProfileItem(
                 icon: Icons.notifications_none_outlined,
-                label: 'Notifications',
-                value: _notificationsEnabled ? 'On' : 'Off',
+                label: S.of(context).notifications,
+                value: _notificationsEnabled ? S.of(context).on : S.of(context).off,
                 onTap: _showNotificationsSheet,
               ),
               _buildDivider(),
               _buildTappableProfileItem(
                 icon: Icons.language_outlined,
-                label: 'Language',
-                value: 'English',
+                label: S.of(context).language,
+                value: S.of(context).currentLanguage,
                 onTap: _showLanguageSheet,
               ),
             ]),
@@ -651,8 +663,8 @@ class _ProfilePageState extends State<ProfilePage>
                 onPressed: _handleLogout,
                 icon: const Icon(Icons.logout_rounded,
                     color: Colors.redAccent),
-                label: const Text('Logout from Account',
-                    style: TextStyle(
+                label: Text(S.of(context).logoutFromAccount,
+                    style: const TextStyle(
                         color: Colors.redAccent,
                         fontWeight: FontWeight.bold)),
                 style: TextButton.styleFrom(

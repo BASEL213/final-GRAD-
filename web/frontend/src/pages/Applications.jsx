@@ -31,8 +31,8 @@ const Applications = () => {
       
       // Fetch both applications and projects
       const [applicationsResponse, projectsResponse] = await Promise.all([
-        applicationsAPI.getAll({ limit: 500 }),
-        projectsAPI.getAll({ limit: 1000 }),
+        applicationsAPI.getAll({ limit: 100 }),
+        projectsAPI.getAll({ limit: 100 }),
       ]);
 
       const applicationsData = applicationsResponse.data || [];

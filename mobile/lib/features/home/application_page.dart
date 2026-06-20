@@ -1,8 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'documents_vault_screen.dart';
 import 'status_screen.dart';
 
@@ -29,15 +31,15 @@ class _ApplicationPageState extends State<ApplicationPage> {
 
   // --- Dropdown Variables ---
   String? selectedProject;
+  String? selectedCategory;
   String? selectedUnitType;
   String? selectedFloor;
   String? selectedPaymentMethod;
 
   List<Map<String, dynamic>> _projects = [];
-  List<String> _projectNames = [];
   int? _selectedProjectAvailableUnits;
   String? _selectedProjectId;
-  String? _selectedProjectType;
+  List<Map<String, dynamic>> _selectedProjectPropertyTypes = [];
   bool _loadingProjects = false;
   final Map<String, PlatformFile?> _selectedDocs = {};
 
@@ -66,35 +68,45 @@ class _ApplicationPageState extends State<ApplicationPage> {
   Future<void> _fetchProjects() async {
     setState(() => _loadingProjects = true);
     try {
-      final res = await Dio().get('${ApiConfig.nodeApi}/projects');
+      final res = await Dio().get('${ApiConfig.nodeApi}/projects',
+          queryParameters: {'limit': 100});
       final list = res.data is List
           ? res.data as List
           : (res.data['data'] as List? ?? []);
       if (mounted) {
         final parsed = list
-            .map<Map<String, dynamic>>((p) => {
-                  'id': (p['_id'] ?? p['id'] ?? '').toString(),
-                  'name': (p['name'] ?? p['title'] ?? '').toString(),
-                  'location': p['location'] is Map
-                      ? ((p['location'] as Map)['city'] ?? '').toString()
-                      : (p['location'] ?? '').toString(),
-                  'priceRange': (p['priceRange'] ?? '').toString(),
-                  'availableUnits': p['availableUnits'] as int? ?? -1,
-                  'totalUnits': p['totalUnits'] as int? ?? 0,
-                  'imageUrl': (p['imageUrl'] ?? p['image'] ?? '').toString(),
-                  'type': (p['type'] ?? '').toString(),
-                })
+            .map<Map<String, dynamic>>((p) {
+              final rawTypes = p['propertyTypes'];
+              final propertyTypes = (rawTypes is List)
+                  ? rawTypes.map<Map<String, dynamic>>((t) => {
+                        'category': (t['category'] ?? '').toString(),
+                        'units': (t['units'] is List)
+                            ? List<String>.from(t['units'].map((u) => u.toString()))
+                            : <String>[],
+                      }).toList()
+                  : <Map<String, dynamic>>[];
+              return {
+                'id': (p['_id'] ?? p['id'] ?? '').toString(),
+                'name': (p['name'] ?? p['title'] ?? '').toString(),
+                'location': p['location'] is Map
+                    ? ((p['location'] as Map)['city'] ?? '').toString()
+                    : (p['location'] ?? '').toString(),
+                'priceRange': (p['priceRange'] ?? '').toString(),
+                'availableUnits': p['availableUnits'] as int? ?? -1,
+                'totalUnits': p['totalUnits'] as int? ?? 0,
+                'imageUrl': ApiConfig.fixImageUrl((p['imageUrl'] ?? p['image'] ?? '').toString()),
+                'type': (p['type'] ?? '').toString(),
+                'propertyTypes': propertyTypes,
+              };
+            })
             .where((p) => (p['name'] as String).isNotEmpty && (p['id'] as String).isNotEmpty)
             .toList();
         setState(() {
           _projects = parsed;
-          _projectNames = parsed.map((p) => p['name'] as String).toList();
         });
       }
     } catch (_) {
-      if (mounted) {
-        setState(() => _projectNames = []);
-      }
+      if (mounted) setState(() => _projects = []);
     } finally {
       if (mounted) setState(() => _loadingProjects = false);
     }
@@ -118,32 +130,40 @@ class _ApplicationPageState extends State<ApplicationPage> {
         return _formKey.currentState!.validate();
       case 1:
         if (_selectedProjectId == null || _selectedProjectId!.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Please select a project to continue.'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(S.current.selectProjectMsg),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ));
           return false;
         }
         if (_selectedProjectAvailableUnits != null && _selectedProjectAvailableUnits == 0) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(S.current.projectSoldOutMsg),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ));
+          return false;
+        }
+        if (selectedCategory == null || selectedCategory!.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('This project is sold out. Please select a different project.'),
+            content: Text('Please select a property category.'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ));
           return false;
         }
         if (selectedUnitType == null || selectedUnitType!.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Please select a unit type.'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(S.current.selectUnitType),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ));
           return false;
         }
         if (selectedPaymentMethod == null || selectedPaymentMethod!.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Please select a payment plan.'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(S.current.selectPaymentPlan),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ));
@@ -152,6 +172,22 @@ class _ApplicationPageState extends State<ApplicationPage> {
         return true;
       case 2:
         return _formKey.currentState!.validate();
+      case 3:
+        const requiredDocs = [
+          'National ID Copy (Front/Back)',
+          'Latest Income Certificate',
+          'Family Status Document',
+        ];
+        final missing = requiredDocs.where((k) => _selectedDocs[k] == null).length;
+        if (missing > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(S.current.allDocumentsRequired),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ));
+          return false;
+        }
+        return true;
       default:
         return true;
     }
@@ -160,8 +196,8 @@ class _ApplicationPageState extends State<ApplicationPage> {
   Future<void> _submitToBackend() async {
     if (_selectedProjectId == null || _selectedProjectId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a project before submitting.'),
+        SnackBar(
+          content: Text(S.current.selectProjectFirst),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
@@ -193,6 +229,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
           'income':          int.tryParse(_incomeController.text.trim()) ?? 0,
           'familySize':      int.tryParse(_familySizeController.text.trim()) ?? 1,
           'currentHousing':  housing.length >= 10 ? housing : '$housing — submitted via mobile app',
+          'propertyCategory':    selectedCategory ?? '',
           'unitType':            selectedUnitType ?? '',
           'preferredFloor':      selectedFloor ?? '',
           'paymentMethod':       selectedPaymentMethod ?? '',
@@ -292,8 +329,8 @@ class _ApplicationPageState extends State<ApplicationPage> {
         }
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You already have a submitted application. Use "My Status" to track it.'),
+          SnackBar(
+            content: Text(S.current.alreadyHasApplication),
             backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
           ),
@@ -302,10 +339,10 @@ class _ApplicationPageState extends State<ApplicationPage> {
       }
 
       final msg = e.type == DioExceptionType.connectionError
-          ? 'Cannot reach the server. Please check your connection.'
+          ? S.current.cannotReachServerConn
           : (errMsg.isNotEmpty ? errMsg :
               errData?['errors']?.first?['msg'] as String? ??
-              'Submission failed. Please try again.');
+              S.current.submissionFailed);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating),
       );
@@ -317,7 +354,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text("Housing Application", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text(S.of(context).housingApplication, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         backgroundColor: Colors.white,
         foregroundColor: darkText,
         elevation: 0.5,
@@ -325,6 +362,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: const [LangToggleButton()],
       ),
       body: Column(
         children: [
@@ -357,9 +395,9 @@ class _ApplicationPageState extends State<ApplicationPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader(Icons.person_outline, "Personal Information"),
+        _sectionHeader(Icons.person_outline, S.current.personalInformation),
         const SizedBox(height: 20),
-        _buildInputField("Full Name", Icons.person, _fullNameController,
+        _buildInputField(S.current.fullName, Icons.person, _fullNameController,
           isRequired: true,
           hint: 'As on your National ID',
           validator: (v) {
@@ -367,7 +405,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
             return null;
           },
         ),
-        _buildInputField("National ID", Icons.badge_outlined, _idController,
+        _buildInputField(S.current.nationalId, Icons.badge_outlined, _idController,
           isNumber: true,
           isRequired: true,
           hint: '14-digit number',
@@ -377,7 +415,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
             return null;
           },
         ),
-        _buildInputField("Email Address", Icons.email_outlined, _emailController,
+        _buildInputField(S.current.emailAddress, Icons.email_outlined, _emailController,
           isRequired: true,
           hint: 'example@mail.com',
           validator: (v) {
@@ -386,7 +424,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
             return null;
           },
         ),
-        _buildInputField("Phone Number", Icons.phone_android, _phoneController,
+        _buildInputField(S.current.phoneNumber, Icons.phone_android, _phoneController,
           isNumber: true,
           isRequired: true,
           hint: '01XXXXXXXXX (11 digits)',
@@ -404,14 +442,14 @@ class _ApplicationPageState extends State<ApplicationPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader(Icons.apartment_rounded, "Project Details"),
+        _sectionHeader(Icons.apartment_rounded, S.current.projectDetails),
         const SizedBox(height: 20),
         // Required label for project
         RichText(
-          text: const TextSpan(
-            text: 'Preferred Project',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF263238)),
-            children: [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))],
+          text: TextSpan(
+            text: S.current.preferredProject,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF263238)),
+            children: const [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))],
           ),
         ),
         const SizedBox(height: 6),
@@ -436,7 +474,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
                     child: Row(children: [
                       Icon(Icons.block, color: Colors.red.shade700, size: 18),
                       const SizedBox(width: 8),
-                      Expanded(child: Text('This project is sold out. Please select a different project.', style: TextStyle(color: Colors.red.shade700, fontSize: 13))),
+                      Expanded(child: Text(S.current.projectSoldOutMsg, style: TextStyle(color: Colors.red.shade700, fontSize: 13))),
                     ]),
                   )
                 : Container(
@@ -449,13 +487,21 @@ class _ApplicationPageState extends State<ApplicationPage> {
                     child: Row(children: [
                       Icon(Icons.check_circle_outline, color: Colors.green.shade700, size: 18),
                       const SizedBox(width: 8),
-                      Text('$_selectedProjectAvailableUnits units available', style: TextStyle(color: Colors.green.shade700, fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(S.current.unitsLeft(_selectedProjectAvailableUnits!), style: TextStyle(color: Colors.green.shade700, fontSize: 13, fontWeight: FontWeight.w600)),
                     ]),
                   ),
           ),
-        _buildLabeledDropdown("Unit Type", _unitTypeOptions(), (v) => setState(() => selectedUnitType = v), isRequired: true, currentValue: selectedUnitType),
-        _buildLabeledDropdown("Preferred Floor", ["Ground Floor", "Typical Floor", "Roof Floor"], (v) => setState(() => selectedFloor = v), isRequired: false, currentValue: selectedFloor),
-        _buildLabeledDropdown("Payment Plan", ["Cash (Full)", "Installments (5 Years)", "Mortgage (20 Years)"], (v) => setState(() => selectedPaymentMethod = v), isRequired: true, currentValue: selectedPaymentMethod),
+        if (_categoryOptions().isNotEmpty)
+          _buildLabeledDropdown('Property Category', _categoryOptions(), (v) => setState(() {
+            selectedCategory = v;
+            selectedUnitType = null;
+            selectedFloor    = null;
+          }), isRequired: true, currentValue: selectedCategory),
+        if (selectedCategory != null && _unitTypeOptions().isNotEmpty)
+          _buildLabeledDropdown(S.current.unitType, _unitTypeOptions(), (v) => setState(() => selectedUnitType = v), isRequired: true, currentValue: selectedUnitType),
+        if (selectedCategory != null && _floorOptions() != null)
+          _buildLabeledDropdown(S.current.preferredFloor, _floorOptions()!, (v) => setState(() => selectedFloor = v), isRequired: false, currentValue: selectedFloor),
+        _buildLabeledDropdown(S.current.paymentPlan, ["Cash (Full)", "Installments (5 Years)", "Mortgage (20 Years)"], (v) => setState(() => selectedPaymentMethod = v), isRequired: true, currentValue: selectedPaymentMethod),
       ],
     );
   }
@@ -464,12 +510,12 @@ class _ApplicationPageState extends State<ApplicationPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader(Icons.monetization_on_outlined, "Financial Status"),
+        _sectionHeader(Icons.monetization_on_outlined, S.current.financialStatus),
         const SizedBox(height: 20),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _buildInputField("Monthly Income (EGP)", Icons.wallet, _incomeController,
+            Expanded(child: _buildInputField(S.current.monthlyIncome, Icons.wallet, _incomeController,
               isNumber: true, isRequired: true,
               hint: 'e.g. 5000',
               validator: (v) {
@@ -480,7 +526,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
               },
             )),
             const SizedBox(width: 15),
-            Expanded(child: _buildInputField("Family Size", Icons.group_outlined, _familySizeController,
+            Expanded(child: _buildInputField(S.current.familySize, Icons.group_outlined, _familySizeController,
               isNumber: true, isRequired: true,
               hint: '1 – 20',
               validator: (v) {
@@ -493,9 +539,9 @@ class _ApplicationPageState extends State<ApplicationPage> {
           ],
         ),
         const Divider(height: 40),
-        _sectionHeader(Icons.home_work_outlined, "Current Housing Context"),
+        _sectionHeader(Icons.home_work_outlined, S.current.currentHousingContext),
         const SizedBox(height: 20),
-        _buildInputField("Current Residence", Icons.info_outline, _housingDescController,
+        _buildInputField(S.current.currentResidence, Icons.info_outline, _housingDescController,
           isLongText: true, isRequired: true,
           hint: 'Describe where you live now (renting, family home, etc.)',
           validator: (v) {
@@ -505,7 +551,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
             return null;
           },
         ),
-        _buildInputField("Special Requirements", Icons.star_border, _requirementsController,
+        _buildInputField(S.current.specialRequirements, Icons.star_border, _requirementsController,
           isLongText: true, isRequired: false,
           hint: 'Any health, disability, or social needs (optional)',
         ),
@@ -517,13 +563,13 @@ class _ApplicationPageState extends State<ApplicationPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader(Icons.cloud_upload_outlined, "Verification Documents"),
+        _sectionHeader(Icons.cloud_upload_outlined, S.current.verificationDocs),
         const SizedBox(height: 10),
-        const Text("Use your vault for faster submission.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+        Text(S.current.useVaultFaster, style: const TextStyle(color: Colors.grey, fontSize: 13)),
         const SizedBox(height: 25),
-        _buildDocPicker("National ID Copy (Front/Back)"),
-        _buildDocPicker("Latest Income Certificate"),
-        _buildDocPicker("Family Status Document"),
+        _buildDocPicker('National ID Copy (Front/Back)', S.current.nationalIdCopy),
+        _buildDocPicker('Latest Income Certificate',     S.current.latestIncomeCert),
+        _buildDocPicker('Family Status Document',        S.current.familyStatusDoc),
       ],
     );
   }
@@ -559,7 +605,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF263238)),
               children: isRequired
                   ? const [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]
-                  : [const TextSpan(text: '  (optional)', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.normal))],
+                  : [TextSpan(text: '  ${S.current.optional}', style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.normal))],
             ),
           ),
           const SizedBox(height: 6),
@@ -599,9 +645,9 @@ class _ApplicationPageState extends State<ApplicationPage> {
         child: Row(children: [
           Icon(Icons.info_outline, color: Colors.orange.shade700, size: 18),
           const SizedBox(width: 8),
-          const Expanded(
-            child: Text('No active projects available at this time.',
-                style: TextStyle(fontSize: 13)),
+          Expanded(
+            child: Text(S.current.noActiveProjects,
+                style: const TextStyle(fontSize: 13)),
           ),
         ]),
       );
@@ -623,11 +669,13 @@ class _ApplicationPageState extends State<ApplicationPage> {
           return GestureDetector(
             onTap: soldOut ? null : () {
               setState(() {
-                selectedProject                = name;
-                _selectedProjectId             = p['id'] as String;
-                _selectedProjectAvailableUnits = available;
-                _selectedProjectType           = p['type'] as String?;
-                selectedUnitType               = null; // reset when project changes
+                selectedProject                    = name;
+                _selectedProjectId                 = p['id'] as String;
+                _selectedProjectAvailableUnits     = available;
+                _selectedProjectPropertyTypes      = List<Map<String, dynamic>>.from(p['propertyTypes'] ?? []);
+                selectedCategory                   = null;
+                selectedUnitType                   = null;
+                selectedFloor                      = null;
               });
             },
             child: AnimatedContainer(
@@ -652,12 +700,13 @@ class _ApplicationPageState extends State<ApplicationPage> {
                   ClipRRect(
                     borderRadius: const BorderRadius.horizontal(left: Radius.circular(14)),
                     child: imageUrl.isNotEmpty
-                        ? Image.network(
-                            imageUrl,
+                        ? CachedNetworkImage(
+                            imageUrl: imageUrl,
                             width: 90,
                             height: 90,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _imgPlaceholder(),
+                            placeholder: (_, __) => _imgPlaceholder(),
+                            errorWidget: (_, __, ___) => _imgPlaceholder(),
                           )
                         : _imgPlaceholder(),
                   ),
@@ -702,13 +751,13 @@ class _ApplicationPageState extends State<ApplicationPage> {
                                     color: Colors.red.shade100,
                                     borderRadius: BorderRadius.circular(6),
                                   ),
-                                  child: Text('Sold Out',
+                                  child: Text(S.current.soldOut,
                                       style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
                                           color: Colors.red.shade700)),
                                 )
-                              : Text('$available of $total units available',
+                              : Text(S.current.unitsOfTotal(available, total),
                                   style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.green.shade700,
@@ -752,15 +801,22 @@ class _ApplicationPageState extends State<ApplicationPage> {
         child: Icon(Icons.apartment_rounded, color: Colors.grey.shade300, size: 32),
       );
 
+  List<String> _categoryOptions() =>
+      _selectedProjectPropertyTypes.map((t) => t['category'] as String).toList();
+
   List<String> _unitTypeOptions() {
-    const apartments = ['Studio', '1-Bedroom Apartment', '2-Bedroom Apartment', '3-Bedroom Apartment'];
-    const villas = ['Villa', 'Twin House', 'Town House'];
-    switch (_selectedProjectType) {
-      case 'Apartments': return apartments;
-      case 'Villas':     return villas;
-      case 'Mixed':      return [...apartments, ...villas];
-      default:           return [...apartments, ...villas];
-    }
+    if (selectedCategory == null) return [];
+    final match = _selectedProjectPropertyTypes
+        .where((t) => t['category'] == selectedCategory)
+        .firstOrNull;
+    return match != null ? List<String>.from(match['units'] ?? []) : [];
+  }
+
+  // Returns floor choices for Apartments category; null for Villas/Chalets.
+  List<String>? _floorOptions() {
+    final cat = selectedCategory ?? '';
+    if (cat.isEmpty || cat == 'Villas') return null;
+    return ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor', '4th Floor', 'Top / Penthouse Floor'];
   }
 
   Widget _buildLabeledDropdown(String label, List<String> items, Function(String?) onChanged, {bool isRequired = false, String? currentValue}) {
@@ -775,7 +831,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF263238)),
               children: isRequired
                   ? const [TextSpan(text: ' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]
-                  : [const TextSpan(text: '  (optional)', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.normal))],
+                  : [TextSpan(text: '  ${S.current.optional}', style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.normal))],
             ),
           ),
           const SizedBox(height: 6),
@@ -799,8 +855,8 @@ class _ApplicationPageState extends State<ApplicationPage> {
     );
   }
 
-  Widget _buildDocPicker(String title) {
-    final pickedFile = _selectedDocs[title];
+  Widget _buildDocPicker(String docKey, String displayLabel) {
+    final pickedFile = _selectedDocs[docKey];
     final isSelected = pickedFile != null;
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
@@ -821,20 +877,20 @@ class _ApplicationPageState extends State<ApplicationPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                Text(displayLabel, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 if (isSelected)
                   Text(pickedFile.name, style: TextStyle(fontSize: 11, color: Colors.green.shade700)),
               ],
             ),
           ),
           ElevatedButton(
-            onPressed: () => _showUploadOptions(title),
+            onPressed: () => _showUploadOptions(docKey),
             style: ElevatedButton.styleFrom(
               backgroundColor: isSelected ? Colors.green : primaryBlue,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               elevation: 0,
             ),
-            child: Text(isSelected ? "Replace" : "Select", style: const TextStyle(color: Colors.white)),
+            child: Text(isSelected ? S.current.replace : S.current.select, style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -850,12 +906,12 @@ class _ApplicationPageState extends State<ApplicationPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("How to add this document?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(S.current.howAddDocument, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             ListTile(
               leading: const Icon(Icons.upload_file, color: Colors.green),
-              title: const Text("Upload from Device"),
-              subtitle: const Text("Pick any PDF or image file"),
+              title: Text(S.current.uploadFromDevice),
+              subtitle: Text(S.current.pickPdfOrImage),
               onTap: () async {
                 Navigator.pop(ctx);
                 await _pickFileFromDevice(docTitle);
@@ -863,7 +919,7 @@ class _ApplicationPageState extends State<ApplicationPage> {
             ),
             ListTile(
               leading: const Icon(Icons.security_outlined, color: primaryBlue),
-              title: const Text("Select from Documents Vault"),
+              title: Text(S.current.selectFromVault),
               onTap: () {
                 Navigator.pop(ctx);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const DocumentsVaultScreen()));
@@ -887,15 +943,15 @@ class _ApplicationPageState extends State<ApplicationPage> {
         final file = result.files.first;
         setState(() => _selectedDocs[docTitle] = file);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${file.name} selected'),
+          content: Text(S.current.selectedFile(file.name)),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ));
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not open file picker. Please try again.'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(S.current.couldNotOpenFilePicker),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ));
@@ -936,13 +992,13 @@ class _ApplicationPageState extends State<ApplicationPage> {
       child: Row(
         children: [
           if (_currentStep > 0)
-            Expanded(child: OutlinedButton(onPressed: () => setState(() => _currentStep--), style: OutlinedButton.styleFrom(minimumSize: const Size(0, 55)), child: const Text("Back"))),
+            Expanded(child: OutlinedButton(onPressed: () => setState(() => _currentStep--), style: OutlinedButton.styleFrom(minimumSize: const Size(0, 55)), child: Text(S.current.backBtn))),
           if (_currentStep > 0) const SizedBox(width: 16),
           Expanded(
             child: ElevatedButton(
               onPressed: _handleNavigation,
               style: ElevatedButton.styleFrom(backgroundColor: primaryBlue, minimumSize: const Size(0, 55), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              child: Text(_currentStep == 3 ? "Submit Application" : "Continue", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: Text(_currentStep == 3 ? S.current.submitApplication : S.current.continueBtn, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ),
         ],

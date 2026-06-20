@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:findoor_app2/core/api_config.dart';
 import 'application_page.dart';
 
 class PropertyDetailsPage extends StatelessWidget {
@@ -13,7 +15,7 @@ class PropertyDetailsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = property;
 
-    final imageUrl = (p['imageUrl'] ?? p['image'] ?? '').toString();
+    final imageUrl = ApiConfig.fixImageUrl((p['imageUrl'] ?? p['image'] ?? '').toString());
     final title = (p['name'] ?? p['title'] ?? 'Project').toString();
     final location = p['location'] is Map
         ? ((p['location'] as Map)['city'] ?? '').toString()
@@ -47,12 +49,13 @@ class PropertyDetailsPage extends StatelessWidget {
                 Stack(
                   children: [
                     imageUrl.isNotEmpty
-                        ? Image.network(
-                            imageUrl,
+                        ? CachedNetworkImage(
+                            imageUrl: imageUrl,
                             height: 380,
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _placeholder(),
+                            placeholder: (_, __) => _placeholder(),
+                            errorWidget: (_, __, ___) => _placeholder(),
                           )
                         : _placeholder(),
                     // gradient
@@ -236,13 +239,24 @@ class PropertyDetailsPage extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                               color: darkText)),
                       const SizedBox(height: 10),
-                      Text(
-                        description.isNotEmpty
-                            ? description
-                            : 'A premium housing development offering modern living with top-class amenities.',
-                        style: const TextStyle(
-                            color: Colors.blueGrey, height: 1.6, fontSize: 14),
-                      ),
+                      if (description.isNotEmpty)
+                        Text(
+                          description,
+                          style: const TextStyle(
+                              color: Colors.blueGrey, height: 1.6, fontSize: 14),
+                        )
+                      else
+                        Text(
+                          'No description provided.',
+                          style: TextStyle(
+                              color: Colors.grey.shade400,
+                              height: 1.6,
+                              fontSize: 14,
+                              fontStyle: FontStyle.italic),
+                        ),
+
+                      // ── Property Types ────────────────────────
+                      ..._buildPropertyTypesSection(p),
 
                       // ── Amenities ──────────────────────────────
                       const SizedBox(height: 28),
@@ -308,6 +322,60 @@ class PropertyDetailsPage extends StatelessWidget {
         color: Colors.grey.shade100,
         child: Icon(Icons.apartment_rounded, size: 80, color: Colors.grey.shade300),
       );
+
+  List<Widget> _buildPropertyTypesSection(Map p) {
+    final raw = p['propertyTypes'];
+    if (raw is! List || raw.isEmpty) return [];
+    final types = raw.cast<Map>();
+
+    return [
+      const SizedBox(height: 28),
+      const Text('Property Types',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: darkText)),
+      const SizedBox(height: 14),
+      ...types.map((t) {
+        final category = (t['category'] ?? '').toString();
+        final units = (t['units'] is List) ? List<String>.from(t['units']) : <String>[];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(
+                  category == 'Villas' ? Icons.villa_outlined : Icons.apartment_outlined,
+                  color: primaryBlue, size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(category,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: darkText)),
+              ]),
+              if (units.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8, runSpacing: 8,
+                  children: units.map((u) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE3F2FD),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(u, style: const TextStyle(fontSize: 12, color: primaryBlue, fontWeight: FontWeight.w500)),
+                  )).toList(),
+                ),
+              ],
+            ],
+          ),
+        );
+      }),
+    ];
+  }
 
   Widget _buildAmenitiesGrid() {
     final amenities = [

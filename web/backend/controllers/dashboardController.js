@@ -9,23 +9,19 @@ const AuditLog = require('../models/AuditLog');
 // @access  Public
 exports.getDashboardMetrics = async (req, res) => {
     try {
-        const validProjectIds = (await Project.find({}).select('_id').lean()).map((p) => String(p._id));
-        const appQuery = validProjectIds.length
-            ? { projectId: { $in: validProjectIds } }
-            : { _id: null };
-
-        // Get counts from all collections (applications only linked to MongoDB projects)
+        // Count all applications regardless of project linkage so the dashboard
+        // reflects reality — unlinked applications are still real applications.
         const [applicationsCount, projectsCount, usersCount] = await Promise.all([
-            Application.countDocuments(appQuery),
+            Application.countDocuments({}),
             Project.countDocuments(),
             User.countDocuments()
         ]);
 
         // Get application status counts
         const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
-            Application.countDocuments({ ...appQuery, status: 'pending' }),
-            Application.countDocuments({ ...appQuery, status: 'approved' }),
-            Application.countDocuments({ ...appQuery, status: 'rejected' })
+            Application.countDocuments({ status: 'pending' }),
+            Application.countDocuments({ status: 'approved' }),
+            Application.countDocuments({ status: 'rejected' })
         ]);
 
         // Get project status counts

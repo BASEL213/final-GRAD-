@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/login_screen.dart';
 import '../home/home_screen.dart';
@@ -181,7 +182,7 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Government Housing Portal",
+                        S.current.govHousingPortal,
                         style: TextStyle(
                           fontSize: 14,
                           letterSpacing: 1.2,
@@ -209,7 +210,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      "SECURE DIGITAL SERVICE",
+                      S.current.secureDigitalService,
                       style: TextStyle(
                         fontSize: 10,
                         letterSpacing: 2,

@@ -82,27 +82,23 @@ class ApiDataManager {
     const users = this.cache.users || [];
     const projects = this.cache.projects || [];
 
-    return applications
-      .filter((app) => app.projectLinked !== false)
-      .map(app => {
+    return applications.map(app => {
       const user = users.find(u => u._id === app.userId || u.id === app.userId);
       const project = projects.find(
         (p) => String(p._id || p.id) === String(app.projectId || app.projectMongoId)
       );
-      
       return {
         ...app,
         id: app._id || app.id,
         applicantName: app.applicantName || (user && user.name) || 'Unknown User',
         projectName: project ? project.name : app.projectName || 'Unknown Project',
-        projectLinked: app.projectLinked ?? !!project,
+        projectLinked: !!project,
         submittedDate: app.createdAt || app.submittedDate || new Date().toISOString(),
         unitType: app.unitType || app.requestedUnitType || '2BR',
         preferredFloor: app.preferredFloor || 'Any',
         paymentMethod: app.paymentMethod || 'installments'
       };
-    })
-      .filter((app) => app.projectLinked);
+    });
   }
 
   // Get projects

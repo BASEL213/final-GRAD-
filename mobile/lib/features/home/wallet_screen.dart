@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:findoor_app2/core/api_config.dart';
+import 'package:findoor_app2/core/lang.dart';
 import 'package:findoor_app2/core/page_tracker.dart';
 
 class WalletPage extends StatefulWidget {
@@ -85,12 +86,13 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
           icon: const Icon(Icons.arrow_back_ios_new, color: darkText, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Housing Fees',
-            style: TextStyle(color: darkText, fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text(S.of(context).housingFees,
+            style: const TextStyle(color: darkText, fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
+          const LangToggleButton(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: darkText),
-            tooltip: 'Refresh',
+            tooltip: S.of(context).refresh,
             onPressed: _loadData,
           ),
         ],
@@ -110,16 +112,16 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
                     const SizedBox(height: 28),
                     Row(
                       children: [
-                        Expanded(child: _actionButton(Icons.credit_card,   'Pay Now',   _onPayNow)),
+                        Expanded(child: _actionButton(Icons.credit_card,   S.of(context).payNow,   _onPayNow)),
                         const SizedBox(width: 12),
-                        Expanded(child: _actionButton(Icons.receipt_long,  'Statement', _onStatement)),
+                        Expanded(child: _actionButton(Icons.receipt_long,  S.of(context).statement, _onStatement)),
                         const SizedBox(width: 12),
-                        Expanded(child: _actionButton(Icons.support_agent, 'Support',   _onSupport)),
+                        Expanded(child: _actionButton(Icons.support_agent, S.of(context).support,   _onSupport)),
                       ],
                     ),
                     const SizedBox(height: 32),
                     Text(
-                      _application == null ? 'No Active Application' : 'Fee Breakdown',
+                      _application == null ? S.of(context).noActiveApplication : S.of(context).feeBreakdown,
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: darkText),
                     ),
                     const SizedBox(height: 16),
@@ -162,7 +164,7 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Amount Due', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  Text(S.current.amountDue, style: const TextStyle(color: Colors.white70, fontSize: 13)),
                   const SizedBox(height: 4),
                   Text(
                     'EGP ${_totalDue.toStringAsFixed(2)}',
@@ -191,14 +193,14 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Account Holder', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  Text(S.current.accountHolder, style: const TextStyle(color: Colors.white54, fontSize: 11)),
                   Text(_userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text('Paid So Far', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  Text(S.current.paidSoFar, style: const TextStyle(color: Colors.white54, fontSize: 11)),
                   Text(
                     'EGP ${_totalPaid.toStringAsFixed(2)}',
                     style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
@@ -246,11 +248,11 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
         children: [
           Icon(Icons.receipt_long_outlined, size: 52, color: Colors.grey.shade300),
           const SizedBox(height: 16),
-          const Text('No Application Yet',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: darkText)),
+          Text(S.current.noApplicationYet,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: darkText)),
           const SizedBox(height: 8),
           Text(
-            'Submit a housing application to see your fee breakdown here.',
+            S.current.submitAppToSeeFees,
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey.shade500, fontSize: 13, height: 1.5),
           ),
@@ -264,16 +266,16 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
 
     final items = <Map<String, dynamic>>[
       {
-        'title': 'Application Submission Fee',
-        'desc':  'Required to process your application',
+        'title': S.current.appSubmissionFee,
+        'desc':  S.current.processApplicationFeeDesc,
         'amount': _appFee,
         'paid':   _appStatus == 'approved' || _appStatus == 'rejected',
         'icon':   Icons.assignment_turned_in_outlined,
         'urgent': false,
       },
       {
-        'title': 'Document Processing Fee',
-        'desc':  'Administrative document review',
+        'title': S.current.docProcessingFee,
+        'desc':  S.current.adminDocReview,
         'amount': _processingFee,
         'paid':   _appStatus == 'approved' || _appStatus == 'rejected',
         'icon':   Icons.description_outlined,
@@ -281,8 +283,8 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
       },
       if (_appStatus == 'approved')
         {
-          'title': 'Unit Reservation Deposit',
-          'desc':  '$projectName — Required before contract signing',
+          'title': S.current.unitReservationDeposit,
+          'desc':  '$projectName — ${S.current.unitReservationDeposit}',
           'amount': _depositAmount,
           'paid':   false,
           'icon':   Icons.home_outlined,
@@ -363,7 +365,7 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  isPaid ? 'Paid' : isUrgent ? 'Due Now' : 'Pending',
+                  isPaid ? S.current.paid : isUrgent ? S.current.dueNow : S.current.pendingStatus,
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
@@ -383,18 +385,14 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [
-          Icon(Icons.credit_card, color: primaryBlue),
-          SizedBox(width: 10),
-          Text('Online Payment'),
+        title: Row(children: [
+          const Icon(Icons.credit_card, color: primaryBlue),
+          const SizedBox(width: 10),
+          Text(S.current.onlinePayment),
         ]),
-        content: const Text(
-          'Online payment will be available soon.\n\n'
-          'Please visit your nearest Findoor Housing Office to pay in person.\n\n'
-          'Office hours: Sun–Thu, 9:00 AM – 3:00 PM',
-        ),
+        content: Text(S.current.onlinePaymentSoon),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(S.current.ok)),
         ],
       ),
     );
@@ -403,8 +401,8 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
   void _onStatement() {
     if (_application == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No application on file yet.'),
+        SnackBar(
+          content: Text(S.current.noApplicationOnFile),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -414,20 +412,20 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Fee Statement'),
+        title: Text(S.current.feeStatement),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _statRow('Application Fee', 'EGP 150'),
-            _statRow('Processing Fee',  'EGP 50'),
-            if (_appStatus == 'approved') _statRow('Deposit Due', 'EGP 5,000'),
+            _statRow(S.current.applicationFeeLabel, 'EGP 150'),
+            _statRow(S.current.processingFeeLabel,  'EGP 50'),
+            if (_appStatus == 'approved') _statRow(S.current.depositDue, 'EGP 5,000'),
             const Divider(height: 20),
-            _statRow('Status',  _appStatus.toUpperCase()),
-            _statRow('Project', _application?['projectName'] as String? ?? '—'),
+            _statRow(S.current.statusLabel,  _appStatus.toUpperCase()),
+            _statRow(S.current.projectLabel, _application?['projectName'] as String? ?? '—'),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(S.current.close)),
         ],
       ),
     );
@@ -457,18 +455,18 @@ class _WalletPageState extends State<WalletPage> with PageTracker<WalletPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Payment Support',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(S.current.paymentSupport,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.phone, color: primaryBlue),
-              title: const Text('Call Finance Office'),
+              title: Text(S.current.callFinanceOffice),
               subtitle: const Text('+20 2 1234 5678'),
               onTap: () => Navigator.pop(ctx),
             ),
             ListTile(
               leading: const Icon(Icons.email_outlined, color: primaryBlue),
-              title: const Text('Email Support'),
+              title: Text(S.current.emailSupportLabel),
               subtitle: const Text('payments@findoor.gov.eg'),
               onTap: () => Navigator.pop(ctx),
             ),

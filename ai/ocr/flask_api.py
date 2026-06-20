@@ -12,10 +12,12 @@ Endpoints
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
 import tempfile
+import time as _time
 import uuid
 
 # ── Paddle inference flags (must be set before any paddle import) ──────────────
@@ -69,6 +71,46 @@ _USE_LLM        = has_llm_key()
 _MAX_UPLOAD_MB  = 15
 _MAX_UPLOAD_B   = _MAX_UPLOAD_MB * 1024 * 1024
 _ALLOWED_EXT    = {"jpg", "jpeg", "png", "webp", "bmp"}
+
+# ── Layer 8: Image-hash result cache ─────────────────────────────────────────
+_RESULT_CACHE: dict[str, tuple[dict, float]] = {}  # md5 → (payload, timestamp)
+_CACHE_TTL    = 300   # seconds (5 minutes)
+
+
+def _img_hash(path: str) -> str:
+    with open(path, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+
+# ── Layer 2: Image quality gate ───────────────────────────────────────────────
+
+def _quality_check(path: str) -> str | None:
+    """
+    Pre-flight sanity check before spending any API quota.
+    Returns a user-friendly error string on failure, None on pass.
+    """
+    try:
+        import cv2 as _cv2
+        img = _cv2.imread(path)
+        if img is None:
+            return "Could not decode the image file. Please try a different photo."
+        h, w = img.shape[:2]
+        if min(h, w) < 300:
+            return ("Image resolution is too low. "
+                    "Please use a higher-quality camera setting and retake the photo.")
+        ratio = w / h
+        if ratio < 0.8 or ratio > 2.5:
+            return ("Please photograph only the ID card so the full card fills the frame.")
+        gray = _cv2.cvtColor(img, _cv2.COLOR_BGR2GRAY)
+        if float(gray.mean()) < 40:
+            return ("Image is too dark. Use better lighting or flash and retake the photo.")
+        blur_score = float(_cv2.Laplacian(gray, _cv2.CV_64F).var())
+        if blur_score < 80:
+            return ("Image is too blurry. Hold your phone steady and retake the photo.")
+        return None
+    except Exception as exc:
+        logger.warning("Quality check error (skipping gate): %s", exc)
+        return None   # never block on quality-check failures
 
 if _USE_LLM:
     _provider = "Gemini" if os.environ.get("GOOGLE_API_KEY") else "Groq"
@@ -237,22 +279,47 @@ def extract():
 
         log.info("OCR request — %d KB  ext=%s", size_kb, suffix)
 
+        # ── Layer 2: Quality gate ─────────────────────────────────────────────
+        quality_err = _quality_check(tmp_path)
+        if quality_err:
+            log.info("Quality gate rejected: %s", quality_err)
+            return jsonify({
+                "success":    False,
+                "error":      quality_err,
+                "request_id": rid,
+            }), 422
+
+        # ── Layer 8: Cache lookup ─────────────────────────────────────────────
+        img_md5   = _img_hash(tmp_path)
+        cache_hit = False
+        cached    = _RESULT_CACHE.get(img_md5)
+        if cached:
+            payload, ts = cached
+            if _time.time() - ts < _CACHE_TTL:
+                log.info("Cache hit (md5=%s) — returning cached result", img_md5)
+                payload = dict(payload)   # shallow copy
+                payload["request_id"] = rid
+                payload["cache_hit"]  = True
+                return jsonify(payload)
+            else:
+                del _RESULT_CACHE[img_md5]   # expired
+
         result      = None
         method_used = "paddle"
+        ocr_meta: dict = {}
 
         # ── 1. LLM path (fast, ~3-15 s) ──────────────────────────────────────
         if _USE_LLM:
-            result = llm_extract(tmp_path)
+            result = llm_extract(tmp_path, _meta=ocr_meta)
 
             if result and any(v for v in result.values()):
-                method_used = (
-                    "gemini" if os.environ.get("GOOGLE_API_KEY") else "groq"
-                )
+                base_provider = "gemini" if os.environ.get("GOOGLE_API_KEY") else "groq"
+                method_used   = f"{base_provider}+{ocr_meta.get('method_detail', 'pass1')}"
                 log.info("LLM extraction succeeded (%s)", method_used)
 
-                # If NID is still missing, run a fast targeted zone scan
-                nid_ar  = result.get("الرقم القومي") or ""
-                nid_la  = re.sub(r"\D", "", nid_ar.translate(_AR2LA))
+                # Paddle NID fill-in if NID still missing after all LLM passes
+                nid_ar = result.get("الرقم القومي") or ""
+                nid_la = re.sub(r"\D", "", nid_ar.translate(_AR2LA))
                 if not _validate_nid(nid_la):
                     method_used += _paddle_nid_fillin(tmp_path, result, rid)
             else:
@@ -273,18 +340,30 @@ def extract():
                     "request_id": rid,
                 }), 422
 
-        # ── Summarise ─────────────────────────────────────────────────────────
+        # ── Summarise & build response ────────────────────────────────────────
         extracted = sum(1 for v in result.values() if v)
-        log.info("Done — extracted %d/6 fields  method=%s", extracted, method_used)
+        log.info("Done — extracted %d/6 fields  method=%s  deskewed=%s",
+                 extracted, method_used, ocr_meta.get("deskewed", False))
 
-        return jsonify({
+        payload = {
             "success":         True,
             "data":            result,
             "extracted_count": extracted,
             "total_fields":    6,
             "method":          method_used,
+            "deskewed":        ocr_meta.get("deskewed", False),
+            "cache_hit":       False,
             "request_id":      rid,
-        })
+        }
+        if ocr_meta.get("confidence"):
+            payload["confidence"] = ocr_meta["confidence"]
+        if ocr_meta.get("derived_fields"):
+            payload["derived_fields"] = ocr_meta["derived_fields"]
+
+        # ── Layer 8: Store in cache ───────────────────────────────────────────
+        _RESULT_CACHE[img_md5] = (payload, _time.time())
+
+        return jsonify(payload)
 
     except Exception as exc:
         log.error("OCR failed: %s", exc, exc_info=True)

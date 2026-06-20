@@ -105,6 +105,14 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
+            <Route path="*" element={
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', gap: 16 }}>
+                <i className="bi bi-exclamation-triangle" style={{ fontSize: 64, color: '#cbd5e1' }}></i>
+                <h3 style={{ color: '#475569', fontWeight: 700 }}>404 — Page Not Found</h3>
+                <p style={{ color: '#94a3b8', fontSize: 14 }}>The page you are looking for does not exist.</p>
+                <a href="/dashboard" className="btn btn-primary btn-sm">Go to Dashboard</a>
+              </div>
+            } />
           </Routes>
         </div>
       </Router>

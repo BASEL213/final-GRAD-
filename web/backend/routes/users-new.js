@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const protect      = require('../middleware/protect');
+const requireAdmin = require('../middleware/requireAdmin');
 
-// Import MongoDB-only controller
 const {
     getAllUsers,
     getUserById,
@@ -13,44 +14,13 @@ const {
     getUserStats
 } = require('../controllers/userController-mongodb');
 
-// @desc    Get all users
-// @route   GET /api/users
-// @access  Public
-router.get('/', getAllUsers);
-
-// @desc    Get user statistics
-// @route   GET /api/users/stats
-// @access  Public
-router.get('/stats', getUserStats);
-
-// @desc    Reset user password
-// @route   PATCH /api/users/:id/reset-password
-// @access  Public
-router.patch('/:id/reset-password', resetPassword);
-
-// @desc    Get single user by ID
-// @route   GET /api/users/:id
-// @access  Public
-router.get('/:id', getUserById);
-
-// @desc    Create new user
-// @route   POST /api/users
-// @access  Public
-router.post('/', createUser);
-
-// @desc    Update user
-// @route   PUT /api/users/:id
-// @access  Public
-router.put('/:id', updateUser);
-
-// @desc    Verify user
-// @route   PATCH /api/users/:id/verify
-// @access  Public
-router.patch('/:id/verify', verifyUser);
-
-// @desc    Delete user
-// @route   DELETE /api/users/:id
-// @access  Public
-router.delete('/:id', deleteUser);
+router.get('/',    protect, requireAdmin, getAllUsers);
+router.get('/stats', protect, requireAdmin, getUserStats);
+router.patch('/:id/reset-password', resetPassword);       // self-service — no auth needed
+router.get('/:id',    protect, getUserById);
+router.post('/',      createUser);                        // admin creates users via web
+router.put('/:id',    protect, updateUser);
+router.patch('/:id/verify', protect, requireAdmin, verifyUser);
+router.delete('/:id', protect, requireAdmin, deleteUser);
 
 module.exports = router;

@@ -28,13 +28,53 @@ if not GROQ_API_KEY:
     raise ValueError("No Groq API key found.")
 
 client = Groq(api_key=GROQ_API_KEY)
-chat_histories: dict[str, list] = {}
 
 import time as _wall_time
+import json as _json
 _SESSION_TTL_SEC = 3600
+
+# ── Session store: Redis when REDIS_URL is set, in-process dict otherwise ────
+# In-process works for single-instance demo. Redis is required for production
+# multi-instance deployments (sessions survive restarts and are shared).
+from config import REDIS_URL as _REDIS_URL
+
+_redis_client = None
+if _REDIS_URL:
+    try:
+        import redis as _redis_lib
+        _redis_client = _redis_lib.from_url(_REDIS_URL, decode_responses=True)
+        _redis_client.ping()
+        print(f"[rag_engine] Session store: Redis ({_REDIS_URL})")
+    except Exception as _e:
+        print(f"[rag_engine] Redis unavailable ({_e}), falling back to in-process sessions.")
+        _redis_client = None
+else:
+    print("[rag_engine] Session store: in-process (set REDIS_URL for production)")
+
+# In-process fallback
+chat_histories: dict[str, list] = {}
 _session_last_seen: dict[str, float] = {}
 
+
+def _get_history(session_id: str) -> list:
+    if _redis_client:
+        raw = _redis_client.get(f"chat:{session_id}")
+        return _json.loads(raw) if raw else []
+    return chat_histories.get(session_id, [])
+
+
+def _set_history(session_id: str, history: list) -> None:
+    if _redis_client:
+        _redis_client.setex(f"chat:{session_id}", _SESSION_TTL_SEC, _json.dumps(history, ensure_ascii=False))
+    else:
+        chat_histories[session_id] = history
+        _session_last_seen[session_id] = _wall_time.time()
+
+
 def _evict_stale_sessions():
+    """Only needed for the in-process fallback — Redis handles TTL automatically."""
+    if _redis_client:
+        return
     now = _wall_time.time()
     stale = [sid for sid, ts in _session_last_seen.items() if now - ts > _SESSION_TTL_SEC]
     for sid in stale:
@@ -1097,10 +1137,6 @@ def chat(query: str, session_id: str = "default") -> dict:
     from safety import redact_pii
 
     _evict_stale_sessions()
-    _session_last_seen[session_id] = _wall_time.time()
-
-    if session_id not in chat_histories:
-        chat_histories[session_id] = []
 
     t0 = _time.time()
     error_str = None
@@ -1109,10 +1145,12 @@ def chat(query: str, session_id: str = "default") -> dict:
     # ── Layer 0: Instant greeting response (no LLM call) ─────────────────────
     if any(t in query for t in _GREETING_TRIGGERS):
         _answer = _handle_greeting(None, None, query, None)
-        chat_histories[session_id].extend([
+        _hist = _get_history(session_id)
+        _hist.extend([
             {"role": "user",      "content": query},
             {"role": "assistant", "content": _answer},
         ])
+        _set_history(session_id, _hist)
         _latency = (_time.time() - t0) * 1000
         log_interaction(session_id, query, _answer, ["greeting"], _latency)
         return {"answer": _answer, "sources": ["greeting"], "session_id": session_id, "plan": "A"}
@@ -1144,20 +1182,24 @@ def chat(query: str, session_id: str = "default") -> dict:
                 _answer = None  # fall through to RAG on error
 
             if _answer:
-                chat_histories[session_id].extend([
+                _hist = _get_history(session_id)
+                _hist.extend([
                     {"role": "user",      "content": query},
                     {"role": "assistant", "content": _answer},
                 ])
+                _set_history(session_id, _hist)
                 _latency = (_time.time() - t0) * 1000
                 log_interaction(session_id, query, _answer, ["MongoDB-applications"], _latency)
                 return {"answer": _answer, "sources": ["MongoDB-applications"], "session_id": session_id, "plan": "A"}
         else:
             # Intent detected but no tracking code in message — ask for it
             _answer = "لمعرفة حالة طلبك، يرجى إرسال كود المتابعة الخاص بك.\nيمكنك إيجاده في تطبيق Findoor تحت قسم \"My Status\"."
-            chat_histories[session_id].extend([
+            _hist = _get_history(session_id)
+            _hist.extend([
                 {"role": "user",      "content": query},
                 {"role": "assistant", "content": _answer},
             ])
+            _set_history(session_id, _hist)
             _latency = (_time.time() - t0) * 1000
             log_interaction(session_id, query, _answer, [], _latency)
             return {"answer": _answer, "sources": [], "session_id": session_id, "plan": "A"}
@@ -1185,10 +1227,12 @@ def chat(query: str, session_id: str = "default") -> dict:
                 "• 📋 معرفة خطوات التقديم والأوراق المطلوبة\n\n"
                 "هل تريد أن أبدأ بترشيح مشروع مناسب لك؟"
             )
-            chat_histories[session_id].extend([
+            _hist = _get_history(session_id)
+            _hist.extend([
                 {"role": "user",      "content": query},
                 {"role": "assistant", "content": _no_data},
             ])
+            _set_history(session_id, _hist)
             _latency = (_time.time() - t0) * 1000
             log_interaction(session_id, query, _no_data, [], _latency)
             return {"answer": _no_data, "sources": [], "session_id": session_id, "plan": "A"}
@@ -1213,7 +1257,7 @@ def chat(query: str, session_id: str = "default") -> dict:
         {"role": "system",
          "content": SYSTEM_PROMPT + unit_instruction + f"\n\nالمعلومات المتاحة:\n{context}"},
     ]
-    for msg in chat_histories[session_id][-MAX_CHAT_HISTORY * 2:]:
+    for msg in _get_history(session_id)[-MAX_CHAT_HISTORY * 2:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": query})
 
@@ -1244,10 +1288,12 @@ def chat(query: str, session_id: str = "default") -> dict:
                     "هذه الأسئلة تُجاب مباشرة من قاعدة البيانات دون الحاجة للذكاء الاصطناعي."
                 )
 
-    chat_histories[session_id].append({"role": "user",      "content": query})
-    chat_histories[session_id].append({"role": "assistant", "content": answer})
-    if len(chat_histories[session_id]) > MAX_CHAT_HISTORY * 2:
-        chat_histories[session_id] = chat_histories[session_id][-MAX_CHAT_HISTORY * 2:]
+    _hist = _get_history(session_id)
+    _hist.append({"role": "user",      "content": query})
+    _hist.append({"role": "assistant", "content": answer})
+    if len(_hist) > MAX_CHAT_HISTORY * 2:
+        _hist = _hist[-MAX_CHAT_HISTORY * 2:]
+    _set_history(session_id, _hist)
 
     latency_ms = (_time.time() - t0) * 1000
     log_interaction(session_id, query, answer, sources, latency_ms, error=error_str)
@@ -1256,5 +1302,6 @@ def chat(query: str, session_id: str = "default") -> dict:
 
 
 def clear_history(session_id: str = "default"):
-    if session_id in chat_histories:
-        chat_histories[session_id] = []
+    _set_history(session_id, [])
+    if _redis_client:
+        _redis_client.delete(f"chat:{session_id}")

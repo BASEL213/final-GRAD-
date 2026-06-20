@@ -13,7 +13,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import apiDataManager from '../data/apiDataManager';
 import { applicationsAPI, auditLogsAPI } from '../services/apiService';
-import { enrichApplications, filterLinkedApplications } from '../utils/projectLink';
+import { enrichApplications } from '../utils/projectLink';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
 
@@ -113,7 +113,8 @@ const AdminDashboard = () => {
           applicationsAPI.getRecent(20),
           apiDataManager.getProjects(),
         ]);
-        const all = filterLinkedApplications(enrichApplications(recentRes.data || [], projectsRes));
+        // Enrich but do NOT filter by project linkage — unlinked apps are still real
+        const all = enrichApplications(recentRes.data || [], projectsRes);
 
         setRecentApplications(all.slice(0, 4));
 

@@ -2,6 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { projectsAPI, applicationsAPI } from '../services/apiService';
 
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/api$/, '');
+const fixImageUrl = (url) => {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    const base = new URL(API_ORIGIN);
+    u.hostname = base.hostname;
+    u.port     = base.port;
+    u.protocol = base.protocol;
+    return u.toString();
+  } catch { return url; }
+};
+
 const steps = [
   { id: 1, label: 'Personal Info',   icon: 'bi-person'           },
   { id: 2, label: 'Project',         icon: 'bi-building'         },
@@ -311,7 +324,7 @@ const NewApplication = () => {
                             >
                               <div style={{ position: 'relative', height: 120, background: 'var(--gray-100)' }}>
                                 {p.imageUrl ? (
-                                  <img src={p.imageUrl} alt={p.name}
+                                  <img src={fixImageUrl(p.imageUrl)} alt={p.name}
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

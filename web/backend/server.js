@@ -1,8 +1,19 @@
 require('dotenv').config();
 
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
+const helmet  = require('helmet');
+const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
+
+// Crash-safe — log unhandled rejections instead of silently dying
+process.on('unhandledRejection', (err) => {
+    console.error('[UnhandledRejection]', err);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[UncaughtException]', err);
+    process.exit(1);
+});
 
 // Import routes
 const applicationRoutes = require('./routes/applications');
@@ -57,8 +68,51 @@ if (!fs.existsSync(uploadDir)) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// ── Security middleware ───────────────────────────────────────────────────────
+app.use(helmet());
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : [];
+
+app.use(cors({
+    origin: (origin, cb) => {
+        // Allow requests with no origin (mobile apps, curl, Postman)
+        if (!origin) return cb(null, true);
+        // In development, allow any localhost/127.0.0.1 port (Flutter web uses random ports)
+        if (process.env.NODE_ENV !== 'production') {
+            if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return cb(null, true);
+        }
+        // Allow LAN IP for mobile dev
+        if (/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin)) return cb(null, true);
+        // Check explicit whitelist
+        if (allowedOrigins.length && allowedOrigins.includes(origin)) return cb(null, true);
+        cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+}));
+
+// General API rate limit — 200 req / 15 min per IP
+app.use('/api/', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many requests — please slow down.' },
+}));
+
+// Stricter limits on auth endpoints
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
+});
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    message: { success: false, message: 'Too many registrations from this IP.' },
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -108,6 +162,10 @@ mongoose.connection.on('reconnected', () => {
     console.log(' MongoDB reconnected');
 });
 
+// Serve project photos from the root projects_photo/ directory.
+// Must come before the generic /uploads route so /uploads/projects hits here.
+app.use('/uploads/projects', express.static(path.join(__dirname, '..', '..', 'projects_photo')));
+
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -120,30 +178,30 @@ if (fs.existsSync(distPath)) {
 // Attach userId/userRole from JWT to every request (non-blocking)
 app.use(require('./middleware/optionalAuth'));
 
-// Routes - Using MongoDB controllers
+// ── Routes ────────────────────────────────────────────────────────────────────
+// Rate limiters must be registered before the route handlers they protect
+app.use('/api/auth/login',    authLimiter);
+app.use('/api/auth/register', registerLimiter);
+app.use('/api/v1/auth/login',    authLimiter);
+app.use('/api/v1/auth/register', registerLimiter);
+
 app.use('/api/applications', applicationRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/users', require('./routes/users-new')); // MongoDB users route
-app.use('/api/auditLogs', require('./routes/auditLogs-mongodb')); // MongoDB audit logs
-app.use('/api/notifications', require('./routes/notifications-mongodb')); // MongoDB notifications
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/ai',  require('./routes/ai'));
-app.use('/api/ocr', require('./routes/ocr'));
+app.use('/api/projects',     projectRoutes);
+app.use('/api/auth',         authRoutes);
+app.use('/api/upload',       uploadRoutes);
+app.use('/api/users',        require('./routes/users-new'));
+app.use('/api/auditLogs',    require('./routes/auditLogs-mongodb'));
+app.use('/api/notifications', require('./routes/notifications-mongodb'));
+app.use('/api/dashboard',    dashboardRoutes);
+app.use('/api/ai',           require('./routes/ai'));
+app.use('/api/ocr',          require('./routes/ocr'));
 
-// MongoDB Test Routes (for testing without removing originals)
-const applicationRoutesMongo = require('./routes/applications-mongodb');
-const projectRoutesMongo = require('./routes/projects-mongodb');
-const userRoutesMongo = require('./routes/users-mongodb');
-const auditLogRoutesMongo = require('./routes/auditLogs-mongodb');
-const notificationRoutesMongo = require('./routes/notifications-mongodb');
-
-app.use('/api/applications-mongodb', applicationRoutesMongo);
-app.use('/api/projects-mongodb', projectRoutesMongo);
-app.use('/api/users-mongodb', userRoutesMongo);
-app.use('/api/auditLogs-mongodb', auditLogRoutesMongo);
-app.use('/api/notifications-mongodb', notificationRoutesMongo);
+// /api/v1/* aliases — same handlers, versioned path for forward-compatibility
+app.use('/api/v1/applications', applicationRoutes);
+app.use('/api/v1/projects',     projectRoutes);
+app.use('/api/v1/auth',         authRoutes);
+app.use('/api/v1/users',        require('./routes/users-new'));
+app.use('/api/v1/dashboard',    dashboardRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -215,11 +273,13 @@ app.use('*', (req, res) => {
     }
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(` Findoor Backend Server running on port ${PORT}`);
-    console.log(`API Base URL: http://localhost:${PORT}/api`);
-    console.log(` Health Check: http://localhost:${PORT}/api/health`);
-});
+// Start server only when run directly (not when required by tests)
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(` Findoor Backend Server running on port ${PORT}`);
+        console.log(`API Base URL: http://localhost:${PORT}/api`);
+        console.log(` Health Check: http://localhost:${PORT}/api/health`);
+    });
+}
 
 module.exports = app;
